@@ -52,11 +52,12 @@ val commonSettings = Seq(
     "-unchecked",
     "-Xmacro-settings:materialize-derivations",
     "-Ypartial-unification",
-    "-Ypatmat-exhaust-depth", "40"
+    "-Ypatmat-exhaust-depth",
+    "40"
   ),
   resolvers += "jitpack" at "https://jitpack.io",
   resolvers += Resolver.bintrayRepo("expload", "oss")
-)// ++ scalafixSettings
+) // ++ scalafixSettings
 
 val dotnetTests = file("dotnet-tests/resources")
 
@@ -77,13 +78,13 @@ lazy val common = (project in file("common"))
   )
 
 lazy val `vm-api` = (project in file("vm-api"))
-  .settings( commonSettings: _* )
+  .settings(commonSettings: _*)
   .settings(
     name := "pravda-vm-api",
     normalizedName := "pravda-vm-api",
     description := "Pravda VM API"
   )
-  .settings(scalacheckOps:_*)
+  .settings(scalacheckOps: _*)
   .settings(
     testOptions in Test ++= Seq(
       Tests.Argument(TestFrameworks.ScalaCheck, "-minSuccessfulTests", "1000")
@@ -111,7 +112,7 @@ lazy val vm = (project in file("vm"))
       "com.softwaremill.quicklens" %% "quicklens" % "1.4.11"
     )
   )
-	.dependsOn(`vm-api`, `vm-asm` % "compile->test")
+  .dependsOn(`vm-api`, `vm-asm` % "compile->test")
   .dependsOn(common % "compile->compile;test->test")
 
 lazy val `vm-asm` = (project in file("vm-asm"))
@@ -121,7 +122,7 @@ lazy val `vm-asm` = (project in file("vm-asm"))
     normalizedName := "pravda-vm-asm",
     description := "Pravda Virtual Machine Assembly language"
   )
-  .settings(scalacheckOps:_*)
+  .settings(scalacheckOps: _*)
   .settings(
     testOptions in Test ++= Seq(
       // Reduce size because PravdaAssemblerSpecification
@@ -226,8 +227,8 @@ lazy val node = (project in file("node"))
     outputStrategy in run := Some(OutputStrategy.StdoutOutput)
   )
   .dependsOn(common)
-	.dependsOn(`node-db`)
-	.dependsOn(vm)
+  .dependsOn(`node-db`)
+  .dependsOn(vm)
   .dependsOn(`vm-asm`)
 
 lazy val yopt = (project in file("yopt"))
@@ -299,3 +300,18 @@ lazy val testkit = (project in file("testkit"))
   .dependsOn(`vm-asm`)
   .dependsOn(dotnet)
   .dependsOn(codegen)
+
+lazy val `coins-receiving` = (project in file("services/coins-receiving"))
+  .settings(commonSettings: _*)
+  .settings(
+    skip in publish := true,
+    normalizedName := "pravda-services-coins-receiving",
+    libraryDependencies ++= Seq(
+      // Networking
+      "com.typesafe.akka" %% "akka-actor" % "2.5.8",
+      "com.typesafe.akka" %% "akka-stream" % "2.5.8",
+      "com.typesafe.akka" %% "akka-http" % "10.1.0-RC1",
+      // UI
+      "com.github.fomkin" %% "korolev-server-akkahttp" % "0.7.0"
+    )
+  )
