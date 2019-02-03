@@ -66,8 +66,9 @@ final class CompilersLanguageImpl(implicit executionContext: ExecutionContext) e
     import pravda.evm.abi.parse.AbiParser._
     import pravda.evm.parse.Parser._
     import pravda.evm.translate.Translator._
+    import pravda.evm.utils.readBin
 
-    val source = sourceBytes.toStringUtf8.sliding(2, 2).toArray.map(Integer.parseInt(_, 16).toByte).dropRight(43)
+    val source = readBin(sourceBytes.toStringUtf8)
     val abiS = abiBytes.toStringUtf8
 
     for {
@@ -82,6 +83,7 @@ final class CompilersLanguageImpl(implicit executionContext: ExecutionContext) e
                yamlBytes: ByteString): Future[Either[String, ByteString]] = Future {
     import pravda.evm.abi.parse.AbiParser._
     import pravda.evm.parse.Parser._
+    import pravda.evm.utils.readBin
 
     import com.google.protobuf.ByteString
     import org.json4s.DefaultFormats
@@ -109,23 +111,16 @@ final class CompilersLanguageImpl(implicit executionContext: ExecutionContext) e
 
     val yaml = yamlBytes.toStringUtf8
 
-    yaml4s.parseAllYamlOpt(yaml, false) match {
-      case Some(List(preconditions)) =>
-        println(preconditions)
-
-        for {
-          precondition <- Try { preconditions.extract[Preconditions] }.toEither.left.map(_.toString)
-          _ = println(precondition)
-          source = sourceBytes.toStringUtf8.sliding(2, 2).toArray.map(Integer.parseInt(_, 16).toByte).dropRight(43)
-          abiS = abiBytes.toStringUtf8
-          abi <- parseAbi(abiS)
-          ops <- parseWithIndices(source)
-          output <- EvmSandboxDebug.debugAddressedCode(precondition, ops, abi)
-          result = ByteString.copyFromUtf8(output)
-        } yield result
-      case _ => Left("Couldn't parse yaml file")
-
-    }
-
+    for {
+      yamlL <- yaml4s.parseAllYamlOpt(yaml, useBigDecimalForDouble = false).toRight("Couldn't parse yaml file")
+      preconditions <- yamlL.headOption.toRight("Incorrect format")
+      precondition <- Try { preconditions.extract[Preconditions] }.toEither.left.map(_.toString)
+      source = readBin(sourceBytes.toStringUtf8)
+      abiS = abiBytes.toStringUtf8
+      abi <- parseAbi(abiS)
+      ops <- parseWithIndices(source)
+      output <- EvmSandboxDebug.debugAddressedCode(precondition, ops, abi)
+      result = ByteString.copyFromUtf8(output)
+    } yield result
   }
 }
