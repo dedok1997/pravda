@@ -17,36 +17,22 @@
 
 package pravda.evm.debug
 
-import cats.Applicative
-import cats.kernel.Monoid
 import com.google.protobuf.ByteString
 import pravda.common.domain.Address
 import pravda.vm
 import pravda.vm._
 import pravda.vm.impl.{MemoryImpl, WattCounterImpl}
-import pravda.vm.sandbox.VmSandbox.{EnvironmentSandbox, Preconditions, StorageSandbox}
+import pravda.vm.sandbox.VmSandbox._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.language.higherKinds
 
 object VmSandboxDebug {
 
-  def run[F[_], S](input: Preconditions, code: ByteString)(implicit debugger: Debugger[S],
-                                                           monoid: Monoid[F[S]],
-                                                           appl: Applicative[F]): F[S] = {
+  def run[S](input: Preconditions, code: ByteString)(implicit debugger: Debugger[S]): List[S] = {
     val sandboxVm = new VmImplDebug()
-    val heap = {
-      if (input.heap.nonEmpty) {
-        val length = input.heap.map(_._1.data).max + 1
-        val buffer = ArrayBuffer.fill[Data](length)(Data.Primitive.Null)
-        input.heap.foreach { case (ref, value) => buffer(ref.data) = value }
-        buffer
-      } else {
-        ArrayBuffer[Data]()
-      }
-    }
-    val memory = MemoryImpl(ArrayBuffer(input.stack: _*), heap)
+    val heapSandbox = heap(input)
+    val memory = MemoryImpl(ArrayBuffer(input.stack: _*), heapSandbox)
     val wattCounter = new WattCounterImpl(input.`watts-limit`)
 
     val pExecutor = input.executor.getOrElse {
@@ -54,23 +40,16 @@ object VmSandboxDebug {
     }
 
     val effects = mutable.Buffer[vm.Effect]()
-    val environment: Environment = new EnvironmentSandbox(
-      effects,
-      input.`program-storage`,
-      input.balances.toSeq,
-      input.programs.toSeq,
-      pExecutor,
-      input.`app-state-info`
-    )
+    val environmentS: Environment = environment(input, effects, pExecutor)
     val storage = new StorageSandbox(Address.Void, effects, input.storage.toSeq)
 
     memory.enterProgram(Address.Void)
     val res = sandboxVm.debugBytes(
       code.asReadOnlyByteBuffer(),
-      environment,
+      environmentS,
       memory,
       wattCounter,
-      Some(storage),
+      storage,
       Some(Address.Void),
       pcallAllowed = true
     )

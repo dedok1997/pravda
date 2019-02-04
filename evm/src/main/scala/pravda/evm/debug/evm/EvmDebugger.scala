@@ -19,7 +19,7 @@ package pravda.evm.debug.evm
 
 import java.nio.ByteBuffer
 
-import cats.{Foldable, Show}
+import cats.Show
 import pravda.evm.debug.DebugVm.{ExecutionResult, InterruptedExecution, MetaExecution, UnitExecution}
 import pravda.evm.debug.Debugger
 import pravda.vm.Meta._
@@ -27,8 +27,6 @@ import pravda.vm.impl.MemoryImpl
 import pravda.vm._
 import pravda.vm.asm.Operation.mnemonicByOpcode
 import pravda.vm.sandbox.VmSandbox.StorageSandbox
-
-import scala.util.{Failure, Success, Try}
 
 sealed trait DebugLog
 
@@ -41,64 +39,59 @@ final case class StorageSnapshot(items: Map[Data.Primitive, Data])
 
 object EvmDebugger extends Debugger[DebugLog] {
   override def debugOp(program: ByteBuffer, op: Int, mem: MemoryImpl, storage: StorageSandbox)(
-      exec: Try[ExecutionResult]): DebugLog = {
+      exec: Either[Throwable, ExecutionResult]): DebugLog = {
     val memorySnap = MemorySnapshot(mem.stack.toList, mem.heap.toList)
     val storageSnap = StorageSnapshot(storage.storageItems.toMap)
     exec match {
-      case Success(UnitExecution(_)) =>
+      case Right(UnitExecution(_)) =>
         PravdaOpLog(mnemonicByOpcode(op), memorySnap, storageSnap)
-      case Success(ex @ MetaExecution(Custom(s))) if s.startsWith(EvmDebugTranslator.debugMarker) =>
+      case Right(ex @ MetaExecution(Custom(s))) if s.startsWith(EvmDebugTranslator.debugMarker) =>
         EvmOpLog(s.stripPrefix(EvmDebugTranslator.debugMarker))
-      case Success(ex @ MetaExecution(l)) =>
+      case Right(ex @ MetaExecution(l)) =>
         PravdaOpLog(l.toString, memorySnap, storageSnap)
-      case Success(InterruptedExecution) =>
+      case Right(InterruptedExecution) =>
         PravdaOpLog(mnemonicByOpcode(op), memorySnap, storageSnap)
-      case Failure(e: Data.DataException) =>
+      case Left(e: Data.DataException) =>
         ErrorLog(s"${mnemonicByOpcode(op)} - ${e.toString}", memorySnap, storageSnap)
-      case Failure(ThrowableVmError(e)) =>
+      case Left(ThrowableVmError(e)) =>
         ErrorLog(s"${mnemonicByOpcode(op)} - ${e.toString}", memorySnap, storageSnap)
     }
   }
 
-  private def t(count: Int)(s: String) = "\t" * count + s
+  def debugLogShow(showStack: Boolean, showHeap: Boolean, showStorage: Boolean): cats.Show[DebugLog] = { log =>
+    def t(count: Int)(s: String) = "\t" * count + s
 
-  def DebugLogShow(showStack: Boolean, showHeap: Boolean, showStorage: Boolean): cats.Show[DebugLog] = {
-    case EvmOpLog(s) =>
-      s
-    case PravdaOpLog(op, memSnap, storSnap) =>
-      (s"\t\t$op" ::
-        (if (showStack)
-         t(3)(s"stack size = ${memSnap.stack.size}:") :: memSnap.stack.reverse.map(el => t(4)(el.toString))
-       else Nil) :::
-        (if (showHeap) t(3)(s"heap size = ${memSnap.heap.size}:") :: memSnap.heap.map(el => t(4)(el.toString))
-       else Nil)) :::
-        (if (showStorage)
-         t(3)(s"storage size = ${storSnap.items.size}:") :: storSnap.items
-           .map(el => t(4)(s"${el._1} -> ${el._2}"))
-           .toList
-       else Nil) mkString "\n"
-    case ErrorLog(msg, memSnap, storSnap) =>
-      (s"\t\t$msg" ::
-        (if (showStack)
-         t(3)(s"stack size = ${memSnap.stack.size}:") :: memSnap.stack.reverse.map(el => t(4)(el.toString))
-       else Nil) :::
-        (if (showHeap) t(3)(s"heap size = ${memSnap.heap.size}:") :: memSnap.heap.map(el => t(4)(el.toString))
-       else Nil)) :::
-        (if (showStorage)
-         t(3)(s"storage size = ${storSnap.items.size}:") :: storSnap.items
-           .map(el => t(4)(s"${el._1} -> ${el._2}"))
-           .toList
-       else Nil) mkString "\n"
+    log match {
+      case EvmOpLog(s) =>
+        s
+      case PravdaOpLog(op, memSnap, storSnap) =>
+        (s"\t\t$op" ::
+          (if (showStack)
+           t(3)(s"stack size = ${memSnap.stack.size}:") :: memSnap.stack.reverse.map(el => t(4)(el.toString))
+         else Nil) :::
+          (if (showHeap) t(3)(s"heap size = ${memSnap.heap.size}:") :: memSnap.heap.map(el => t(4)(el.toString))
+         else Nil)) :::
+          (if (showStorage)
+           t(3)(s"storage size = ${storSnap.items.size}:") :: storSnap.items
+             .map(el => t(4)(s"${el._1} -> ${el._2}"))
+             .toList
+         else Nil) mkString "\n"
+      case ErrorLog(msg, memSnap, storSnap) =>
+        (s"\t\t$msg" ::
+          (if (showStack)
+           t(3)(s"stack size = ${memSnap.stack.size}:") :: memSnap.stack.reverse.map(el => t(4)(el.toString))
+         else Nil) :::
+          (if (showHeap) t(3)(s"heap size = ${memSnap.heap.size}:") :: memSnap.heap.map(el => t(4)(el.toString))
+         else Nil)) :::
+          (if (showStorage)
+           t(3)(s"storage size = ${storSnap.items.size}:") :: storSnap.items
+             .map(el => t(4)(s"${el._1} -> ${el._2}"))
+             .toList
+         else Nil) mkString "\n"
+    }
   }
 
-  import scala.language.higherKinds
-
-  def showDebugLogContainer[F[_]: Foldable](implicit showDebugLog: Show[DebugLog]): cats.Show[F[DebugLog]] =
-    t =>
-      implicitly[Foldable[F]]
-        .foldLeft(t, "") {
-          case (acc, log) =>
-            acc + s"${showDebugLog.show(log)}\n"
-      }
+  def showDebugLogContainer(implicit showDebugLog: Show[DebugLog]): cats.Show[List[DebugLog]] =
+    _.map(showDebugLog.show).mkString("\n")
 
 }

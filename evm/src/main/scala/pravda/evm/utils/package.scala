@@ -24,4 +24,6 @@ package object utils {
 
   def evmWord(arr: Array[Byte]): Data.Primitive.Bytes =
     Data.Primitive.Bytes(ByteString.copyFrom(arr).concat(ByteString.copyFrom(Array.fill[Byte](32 - arr.length)(0))))
+
+  def readBin(s: String): Array[Byte] = s.sliding(2, 2).toArray.map(Integer.parseInt(_, 16).toByte).dropRight(43)
 }
