@@ -19,12 +19,13 @@ package pravda.evm.debug.evm
 
 import pravda.evm.EVM
 import pravda.evm.abi.parse.AbiParser.AbiObject
-import pravda.evm.disasm.{Blocks, JumpTargetRecognizer, StackSizePredictor}
+import pravda.evm.disasm.{Blocks, StackSizePredictor}
 import pravda.evm.translate.Translator._
-import pravda.evm.translate.opcode.{FunctionSelectorTranslator, SimpleTranslation, StdlibAsm, createArray}
+import pravda.evm.translate.opcode._
 import pravda.vm.asm.Operation
 import pravda.vm.{Meta, Opcodes, asm}
 import cats.implicits._
+import pravda.evm.EVM.JumpDest
 
 object EvmDebugTranslator {
 
@@ -49,12 +50,26 @@ object EvmDebugTranslator {
     for {
       code1 <- Blocks.splitToCreativeAndRuntime(ops)
       (creationCode1, actualContract1) = code1
-      code2 <- JumpTargetRecognizer(actualContract1).left.map(_.toString)
+//      code = JumpTargetRecognizer(actualContract1)
+//      //code = actualContract1.code
+//      _ = code.left.foreach{
+//        case (s1,s2) =>
+//          s1.foreach(println)
+//          println("_" * 10)
+//          s2.foreach(println)
+//      }
+//      _ = actualContract1.code.foreach(println)
+  //    code2 <- code.left.map(_.toString)
+      code2 = actualContract1.code
       ops1 = StackSizePredictor.emulate(code2.map(_._2))
       ops = StackSizePredictor.clear(ops1)
       filtered = filterCode(ops)
+      jumpDests = filtered.collect{case j@JumpDest(addr) => j}.zipWithIndex
+      prepared = JumpDestinationPrepare.prepared(jumpDests)
+
       res <- EvmDebugTranslator(filtered, abi).map(
         opcodes =>
+        prepared :::
           Operation.Label(startLabelName) ::
             createArray(defaultMemorySize) :::
             Operation(Opcodes.SWAP) ::

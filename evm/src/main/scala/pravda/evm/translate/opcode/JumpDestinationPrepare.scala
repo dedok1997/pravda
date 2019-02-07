@@ -22,26 +22,23 @@ import pravda.evm.EVM.JumpDest
 import pravda.evm.translate.Translator.startLabelName
 import pravda.vm.asm.Operation
 import pravda.vm.{Opcodes, asm}
-import pravda.vm.asm.Operation.PushOffset
 
 object JumpDestinationPrepare {
 
-  def jumpDestToOps(op: (EVM.JumpDest, Int)): List[asm.Operation] =
-    op match {
-      case (JumpDest(addr), ind) =>
-        List(
-          asm.Operation.Label(nameByNumber(ind)),
-          asm.Operation(Opcodes.DUP),
-          pushBigInt(addr),
-          asm.Operation(Opcodes.EQ),
-          asm.Operation(Opcodes.NOT),
-          Operation.JumpI(Some(nameByNumber(ind + 1))),
-          asm.Operation(Opcodes.POP),
-          PushOffset(nameByAddress(addr)),
-          Operation.Jump(None)
-        )
-      case _ => List()
-    }
+  def jumpDestToOps(op: (EVM.JumpDest, Int)): List[asm.Operation] = {
+    val (JumpDest(addr), ind) = op
+    List(
+      asm.Operation.Label(nameByNumber(ind)),
+      asm.Operation(Opcodes.DUP),
+      pushBigInt(addr),
+      asm.Operation(Opcodes.EQ),
+      asm.Operation(Opcodes.NOT),
+      Operation.JumpI(Some(nameByNumber(ind + 1))),
+      asm.Operation(Opcodes.POP),
+     // PushOffset(nameByAddress(addr)),
+      Operation.Jump(Some(nameByAddress(addr)))
+    )
+  }
 
   def lastBranch(n: Int): List[asm.Operation] =
     if (n > 0)

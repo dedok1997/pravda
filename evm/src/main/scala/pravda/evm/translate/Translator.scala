@@ -21,9 +21,10 @@ import cats.instances.list._
 import cats.instances.either._
 import cats.syntax.traverse._
 import pravda.evm.EVM
+import pravda.evm.EVM.JumpDest
 import pravda.evm.abi.parse.AbiParser
 import pravda.evm.abi.parse.AbiParser.AbiObject
-import pravda.evm.disasm.{Blocks, JumpTargetRecognizer, StackSizePredictor}
+import pravda.evm.disasm.{Blocks, StackSizePredictor}
 import pravda.evm.translate.opcode._
 import pravda.vm.asm.Operation
 import pravda.vm.{Data, Opcodes, asm}
@@ -113,11 +114,17 @@ object Translator {
     for {
       code1 <- Blocks.splitToCreativeAndRuntime(ops)
       (creationCode1, actualContract1) = code1
-      code2 <- JumpTargetRecognizer(actualContract1).left.map(_.toString)
+     // code2 <- JumpTargetRecognizer(actualContract1).left.map(_.toString)
+      code2 = actualContract1.code
       ops = StackSizePredictor.clear(StackSizePredictor.emulate(code2.map(_._2)))
       filtered = filterCode(ops)
+
+      jumpDests = filtered.collect{case j@JumpDest(addr) => j}.zipWithIndex
+      prepared = JumpDestinationPrepare.prepared(jumpDests)
+
       res <- Translator(filtered, abi).map(
         opcodes =>
+          prepared :::
           Operation.Label(startLabelName) ::
             createArray(defaultMemorySize) :::
             Operation(Opcodes.SWAP) ::

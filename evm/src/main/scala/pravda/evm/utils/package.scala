@@ -18,6 +18,8 @@
 package pravda.evm
 
 import com.google.protobuf.ByteString
+import pravda.evm.EVM._
+import pravda.evm.UtilsData.Info
 import pravda.vm.Data
 
 package object utils {
@@ -26,4 +28,20 @@ package object utils {
     Data.Primitive.Bytes(ByteString.copyFrom(arr).concat(ByteString.copyFrom(Array.fill[Byte](32 - arr.length)(0))))
 
   def readBin(s: String): Array[Byte] = s.sliding(2, 2).toArray.map(Integer.parseInt(_, 16).toByte).dropRight(43)
+
+
+
+  def info(ops: List[Op]): Info = ops.foldLeft(Info(0,0,0)){
+    case (acc,SelfAddressedJump(_) | Jump | Jump(_,_)) => acc.copy(jumpCount = acc.jumpCount + 1)
+    case (acc,SelfAddressedJumpI(_) | JumpI | JumpI(_,_)) => acc.copy(jumpiCount = acc.jumpiCount + 1)
+    case (acc, JumpDest(_) | JumpDest) => acc.copy(jumpdestCount = acc.jumpdestCount + 1)
+    case (acc,_) => acc
+  }
 }
+
+object UtilsData
+{
+  case class Info(jumpCount: Int,jumpiCount: Int,jumpdestCount: Int)
+
+}
+

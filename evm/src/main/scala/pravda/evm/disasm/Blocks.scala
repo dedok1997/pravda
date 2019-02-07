@@ -27,10 +27,10 @@ object Blocks {
 
   def split(ops: List[Op]): List[List[Op]] = {
     @tailrec def split(ops: List[Op], acc: List[List[Op]]): List[List[Op]] = ops match {
-      case Nil                        => acc.reverse
-      case JumpDest :: xs             => split(xs, List(JumpDest) :: acc)
-      case JumpDest(addr) :: xs       => split(xs, List(JumpDest(addr)) :: acc.head.reverse :: acc.tail)
-      case SelfAddressedJump(n) :: xs => split(xs, Nil :: (SelfAddressedJump(n) :: acc.head).reverse :: acc.tail)
+      case Nil                         => acc.reverse
+      case JumpDest :: xs              => split(xs, List(JumpDest) :: acc)
+      case JumpDest(addr) :: xs        => split(xs, List(JumpDest(addr)) :: acc.head.reverse :: acc.tail)
+      case SelfAddressedJump(n) :: xs  => split(xs, Nil :: (SelfAddressedJump(n) :: acc.head).reverse :: acc.tail)
       case SelfAddressedJumpI(n) :: xs =>
         split(xs, (SelfAddressedJumpI(n) :: Nil) :: (SelfAddressedJumpI(n) :: acc.head).reverse :: acc.tail)
 
@@ -72,7 +72,7 @@ object Blocks {
     val length = ops.last._1.toLong
     val blocks = Blocks.split(ops.map(_._2))
     val offsetOpt: Option[Int] = blocks
-      .map(bl => Emulator.eval(bl, new StackList(List.empty[StackItem]), List.empty[HistoryRecord]))
+      .map(bl => AbstractExecutor.eval(bl, new StackList(List.empty[StackItem],0), List.empty[HistoryRecord]))
       .flatMap { case (s, h) => h.collect { case r @ HistoryRecord(CodeCopy, _ :: Number(n) :: _) => n } }
       .find(_ < length)
       .map(_.toInt)

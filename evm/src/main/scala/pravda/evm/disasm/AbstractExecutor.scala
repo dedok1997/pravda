@@ -40,16 +40,20 @@ case class CommandResult(op: Op, numb: Int) extends StackItem
 
 case class HistoryRecord(op: Op, args: List[StackItem])
 
-object Emulator {
+object AbstractExecutor {
 
   @tailrec def eval(ops: List[Op],
-                    state: Stack[StackItem],
-                    history: List[HistoryRecord]): (Stack[StackItem], List[HistoryRecord]) = {
+                    state: StackWithNegativeSize[StackItem],
+                    history: List[HistoryRecord]): (StackWithNegativeSize[StackItem], List[HistoryRecord]) = {
     ops match {
       case Nil                             => state -> history
       case Push(n) :: xs                   => eval(xs, state push Number(BigInt(1, n.toArray)), HistoryRecord(Push(n), Nil) :: history)
       case Swap(n) :: xs if n < state.size => eval(xs, state swap n, history)
       case Dup(n) :: xs if n <= state.size => eval(xs, state dup n, history)
+//      case And :: xs if state.pop._1.isInstanceOf[Number] && state.pop._2.pop()._1.isInstanceOf[Number] =>
+//        val (Some(Number(x)),t) = state.pop()
+//        val (Some(Number(y)),res) = t.pop()
+//        eval(xs,res.push(Number(x & y)),history)
 
       case op :: ops =>
         val r = OpCodes.stackReadCount(op)
@@ -64,9 +68,9 @@ object Emulator {
            withJ: Map[Int, WithJumpDest],
            WithJumpI: Map[Int, WithJumpI]): (Set[AddressedJumpOp], Set[WithJumpDest]) = {
 
-    def evalBlock(state: Stack[StackItem])(history: List[HistoryRecord])(
-        block: List[Op]): (Option[AddressedJumpOp], Stack[StackItem], List[HistoryRecord]) = {
-      val (newStack, newHistory) = Emulator.eval(block, state, history)
+    def evalBlock(state: StackWithNegativeSize[StackItem])(history: List[HistoryRecord])(
+        block: List[Op]): (Option[AddressedJumpOp], StackWithNegativeSize[StackItem], List[HistoryRecord]) = {
+      val (newStack, newHistory) = AbstractExecutor.eval(block, state, history)
       jump(newHistory) match {
         case Some(HistoryRecord(SelfAddressedJumpI(n), Number(dest) :: _)) =>
           (Some(JumpI(n, dest.intValue())), newStack, Nil)
@@ -74,32 +78,39 @@ object Emulator {
           (Some(Jump(n, dest.intValue())), newStack, Nil)
 
         case Some(r @ HistoryRecord(SelfAddressedJump(n), _)) =>
+          println(r)
+           history.foreach(println)
           (None, newStack, newHistory)
         case Some(r @ HistoryRecord(SelfAddressedJumpI(n), _)) =>
+          println(r)
+          history.foreach(println)
           (None, newStack, newHistory)
 
         case _ => (None, newStack, newHistory)
       }
     }
 
-    def evalChain(state: Stack[StackItem])(history: List[HistoryRecord])(
+    def evalChain(state: StackWithNegativeSize[StackItem])(history: List[HistoryRecord])(
         ops: List[Op],
         withJ: Map[Int, WithJumpDest],
         WithJumpI: Map[Int, WithJumpI],
-        acc: Set[AddressedJumpOp]): (Set[AddressedJumpOp], Map[Int, WithJumpDest], Map[Int, WithJumpI]) = {
+        acc: Set[AddressedJumpOp],
+        path: List[Op]): (Set[AddressedJumpOp], Map[Int, WithJumpDest], Map[Int, WithJumpI]) = {
       val (jump, newStack, newHistory) = evalBlock(state)(history)(ops)
       jump match {
         case Some(j @ Jump(addr, dest)) if withJ.contains(dest) =>
-          evalChain(newStack)(newHistory)(withJ(dest).ops, withJ - dest, WithJumpI, acc + j)
+          evalChain(newStack)(newHistory)(withJ(dest).ops, withJ - dest, WithJumpI, acc + j,ops ++ withJ(dest).ops)
 
         case Some(j @ JumpI(addr, dest)) if withJ.contains(dest) && !WithJumpI.contains(addr) =>
-          evalChain(newStack)(newHistory)(withJ(dest).ops, withJ - dest, WithJumpI, acc + j)
+          evalChain(newStack)(newHistory)(withJ(dest).ops, withJ - dest, WithJumpI, acc + j,ops ++ withJ(dest).ops)
 
         case Some(j @ JumpI(addr, dest)) if withJ.contains(dest) && WithJumpI.contains(addr) =>
           val (jumps1, dests1, contins1) =
-            evalChain(newStack)(newHistory)(withJ(dest).ops, withJ - dest, WithJumpI - addr, acc + j)
+            evalChain(newStack)(newHistory)(withJ(dest).ops, withJ - dest, WithJumpI - addr, acc + j,ops ++ withJ(dest).ops)
+
           val (jumps2, dests2, contins2) =
-            evalChain(newStack)(newHistory)(WithJumpI(addr).ops, withJ - dest, WithJumpI - addr, acc + j)
+            evalChain(newStack)(newHistory)(WithJumpI(addr).ops, withJ - dest, WithJumpI - addr, acc + j,ops ++ WithJumpI(addr).ops)
+
           val dests = dests1.keySet.intersect(dests2.keySet).map(k => k -> dests1(k)).toMap
           val withJumpi = contins1.keySet.intersect(contins2.keySet).map(k => k -> contins1(k)).toMap
           (jumps1 ++ jumps2 ++ acc, dests, withJumpi)
@@ -113,15 +124,15 @@ object Emulator {
 
     val (jumps1, jumpDests1, jumpi1) = main.foldLeft((Set.empty[AddressedJumpOp], withJ, WithJumpI)) {
       case ((jumps, dests, contins), ops) =>
-        evalChain(StackList.empty)(List.empty)(ops, dests, contins, jumps)
+        evalChain(StackList.empty)(List.empty)(ops, dests, contins, jumps,ops)
     }
     val (jumps2, jumpDests2, jumpi2) = jumpi1.foldLeft((jumps1, jumpDests1, WithJumpI)) {
       case ((jumps, dests, contins), (_, ops)) =>
-        evalChain(StackList.empty)(List.empty)(ops.ops, dests, contins, jumps)
+        evalChain(StackList.empty)(List.empty)(ops.ops, dests, contins, jumps,ops.ops)
     }
     val (jumps3, jumpDests3, jumpi3) = jumpDests2.foldLeft((jumps2, jumpDests2, jumpi2)) {
       case ((jumps, dests, contins), (_, ops)) =>
-        evalChain(StackList.empty)(List.empty)(ops.ops, dests, contins, jumps)
+        evalChain(StackList.empty)(List.empty)(ops.ops, dests, contins, jumps, ops.ops)
     }
     jumps3 -> jumpDests3.values.toSet
   }
@@ -140,6 +151,6 @@ object Emulator {
     }
     val byJumpdest = jumpable.withJumpdest.groupBy(_.dest).map { case (k, v)     => k.addr -> v.head }
     val byJumpi = Blocks.continuation(blocks).groupBy(_.jumpi).map { case (k, v) => k.addr -> v.head }
-    Emulator.eval(main, byJumpdest, byJumpi)
+    AbstractExecutor.eval(main, byJumpdest, byJumpi)
   }
 }

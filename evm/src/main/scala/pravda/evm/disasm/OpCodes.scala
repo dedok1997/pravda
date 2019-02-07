@@ -79,6 +79,7 @@ object OpCodes {
     case SelfAddressedJumpI(_) => 2
     case JumpI(_, _)           => 2
     case Return                => 2
+    case Return(_)             => 2
 
     case AddMod       => 3
     case MulMod       => 3
@@ -116,6 +117,7 @@ object OpCodes {
     case JumpDest(_)  => 0
     case Log(n)       => 0
     case Return       => 0
+    case Return(_)    => 0
     case Invalid      => 0
     case Revert       => 0
     case SelfDestruct => 0

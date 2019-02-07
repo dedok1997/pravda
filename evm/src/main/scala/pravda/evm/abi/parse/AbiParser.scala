@@ -25,6 +25,7 @@ import tethys._
 import tethys.jackson._
 import tethys.derivation.auto._
 import tethys.derivation.semiauto._
+
 import scala.annotation.tailrec
 
 object AbiParser {
@@ -35,20 +36,11 @@ object AbiParser {
       case "function"    => jsonReader[AbiFunction]
       case "event"       => jsonReader[AbiEvent]
       case "constructor" => jsonReader[AbiConstructor]
+      case "fallback"    => jsonReader[AbiFallback]
+
     }
 
-  trait AbiObject {
-    def inputs: Seq[Argument]
-
-    val arguments: List[(Int, EVM.AbiType)] = inputs
-      .map(variable => nameToType(variable.`type`))
-      .foldLeft((4, List.empty[(Int, EVM.AbiType)])) {
-        case ((pos, types), varType) =>
-          (pos + 32, (pos, varType) :: types)
-      }
-      ._2
-      .reverse
-  }
+  trait AbiObject
 
   object AbiObject {
 
@@ -71,10 +63,41 @@ object AbiParser {
 
     lazy val hashableName = s"$name(${inputs.map(_.`type`).mkString(",")})"
     lazy val id = hashKeccak256(hashableName).toList
+
+    val arguments: List[(Int, EVM.AbiType)] = inputs
+      .map(variable => nameToType(variable.`type`))
+      .foldLeft((4, List.empty[(Int, EVM.AbiType)])) {
+        case ((pos, types), varType) =>
+          (pos + 32, (pos, varType) :: types)
+      }
+      ._2
+      .reverse
   }
 
-  case class AbiEvent(name: String, inputs: Seq[Argument], anonymous: Boolean)                extends AbiObject
-  case class AbiConstructor(inputs: Seq[Argument], payable: Boolean, stateMutability: String) extends AbiObject
+  case class AbiFallback(payable: Boolean, stateMutability: String)                           extends AbiObject
+
+  case class AbiEvent(name: String, inputs: Seq[Argument], anonymous: Boolean)                extends AbiObject {
+
+    val arguments: List[(Int, EVM.AbiType)] = inputs
+      .map(variable => nameToType(variable.`type`))
+      .foldLeft((4, List.empty[(Int, EVM.AbiType)])) {
+        case ((pos, types), varType) =>
+          (pos + 32, (pos, varType) :: types)
+      }
+      ._2
+      .reverse
+  }
+  case class AbiConstructor(inputs: Seq[Argument], payable: Boolean, stateMutability: String) extends AbiObject {
+
+    val arguments: List[(Int, EVM.AbiType)] = inputs
+      .map(variable => nameToType(variable.`type`))
+      .foldLeft((4, List.empty[(Int, EVM.AbiType)])) {
+        case ((pos, types), varType) =>
+          (pos + 32, (pos, varType) :: types)
+      }
+      ._2
+      .reverse
+  }
   case class Argument(name: String, `type`: String, indexed: Option[Boolean])
 
   def nameToType(`type`: String): EVM.AbiType = `type` match {
