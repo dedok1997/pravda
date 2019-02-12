@@ -42,7 +42,7 @@ object EvmDebugger extends Debugger[DebugLog] {
       exec: Either[Throwable, ExecutionResult]): DebugLog = {
     val memorySnap = MemorySnapshot(mem.stack.toList, mem.heap.toList)
     val storageSnap = StorageSnapshot(storage.storageItems.toMap)
-    exec match {
+    val log = exec match {
       case Right(UnitExecution(_)) =>
         PravdaOpLog(mnemonicByOpcode(op), memorySnap, storageSnap)
       case Right(ex @ MetaExecution(Custom(s))) if s.startsWith(EvmDebugTranslator.debugMarker) =>
@@ -55,7 +55,13 @@ object EvmDebugger extends Debugger[DebugLog] {
         ErrorLog(s"${mnemonicByOpcode(op)} - ${e.toString}", memorySnap, storageSnap)
       case Left(ThrowableVmError(e)) =>
         ErrorLog(s"${mnemonicByOpcode(op)} - ${e.toString}", memorySnap, storageSnap)
+      case Left(e : Exception) =>
+        ErrorLog(s"${mnemonicByOpcode(op)} - ${e.toString}", memorySnap, storageSnap)
     }
+
+    println(debugLogShow(true,false,true).show(log))
+
+    log
   }
 
   def debugLogShow(showStack: Boolean, showHeap: Boolean, showStorage: Boolean): cats.Show[DebugLog] = { log =>

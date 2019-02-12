@@ -41,22 +41,37 @@ object StackSizePredictor {
     type ToJumpDest = Option[Int]
     type StackSize = Int
     type ToContinue = Option[Int]
+    var used = Set.empty[Int]
 
     @tailrec def emulate(ind: Int, size: Int): (ToJumpDest, ToContinue, StackSize) = {
-      ops1(ind) match {
-        case (x, s) if terminate(x) =>
-          ops1(ind) = (x, size)
-          (None, None, handle(x, size))
-        case (j @ Jump(addr, dest), s) =>
-          ops1(ind) = (j, size)
-          (Some(dest), None, handle(j, size))
-        case (j @ JumpI(addr, dest), s) =>
-          ops1(ind) = (j, size)
-          (Some(dest), Some(ind + 1), handle(j, size))
-        case (x, s) =>
-          ops1(ind) = (x, size)
-          emulate(ind + 1, handle(x, size))
-      }
+      if (!used.contains(ind)) {
+        used = used + ind
+        ops1(ind) match {
+          case (x, s) if terminate(x) =>
+            ops1(ind) = (x, size)
+            (None, None, handle(x, size))
+
+          case (j @ SelfAddressedJump(_), s) =>
+            ops1(ind) = (j, size)
+            (None, None, handle(j, size))
+
+          case (j @ SelfAddressedJumpI(_), s) =>
+            ops1(ind) = (j, size)
+            (None, Some(ind + 1), handle(j, size))
+
+          case (j @ Jump(addr, dest), s) =>
+            ops1(ind) = (j, size)
+            (Some(dest), None, handle(j, size))
+
+          case (j @ JumpI(addr, dest), s) =>
+            ops1(ind) = (j, size)
+            (Some(dest), Some(ind + 1), handle(j, size))
+
+          case (x, s) =>
+            ops1(ind) = (x, size)
+            emulate(ind + 1, handle(x, size))
+        }
+      } else (None, None, size)
     }
 
     def emulateS(to: Int, size: Int): Unit = {
@@ -69,14 +84,14 @@ object StackSizePredictor {
                 case (JumpDest(`addr`), i) if i < 0 => true
                 case _                              => false
               }, s)
-            case _ =>
+            case _ => ()
           }
 
           cont match {
             case Some(addr) if ops1(addr)._2 < 0 => emulateS(addr, s)
-            case _                               =>
+            case _                               => ()
           }
-        case _ =>
+        case _ => ()
       }
     }
 

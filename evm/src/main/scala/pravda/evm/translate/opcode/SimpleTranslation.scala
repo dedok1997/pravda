@@ -87,11 +87,14 @@ object SimpleTranslation {
     case Eq             => bigintOp(Operation(Opcodes.EQ))
 
 
-//    case Jump(_, dest)  => codeToOps(Opcodes.POP) ::: Operation.Jump(Some(nameByAddress(dest))) :: Nil
-//    case JumpI(_, dest) => jumpi(dest)
+    case Jump(_, dest)  => codeToOps(Opcodes.POP) ::: Operation.Jump(Some(nameByAddress(dest))) :: Nil
+    case JumpI(_, dest) => jumpi(dest)
 
-    case Jump  | SelfAddressedJump(_) => Operation.Jump(Some(nameByNumber(0))) :: Nil
-    case JumpI | SelfAddressedJumpI(_) => codeToOps(Opcodes.SWAP) ++ cast(Data.Type.Boolean) ::: Operation.JumpI(Some(nameByNumber(0))) :: codeToOps(Opcodes.POP)
+    case Jump  | SelfAddressedJump(_) =>
+      cast(Data.Type.BigInt) ::: Operation.Jump(Some(nameByNumber(0))) :: Nil
+    case JumpI | SelfAddressedJumpI(_) =>
+      cast(Data.Type.BigInt) ++ codeToOps(Opcodes.SWAP) ++ cast(Data.Type.BigInt) ++ codeToOps(Opcodes.SWAP) ++
+      codeToOps(Opcodes.SWAP) ++ cast(Data.Type.Boolean) ::: Operation.JumpI(Some(nameByNumber(0))) :: codeToOps(Opcodes.POP)
 
     case Stop => codeToOps(Opcodes.POP, Opcodes.POP, Opcodes.POP, Opcodes.STOP)
 

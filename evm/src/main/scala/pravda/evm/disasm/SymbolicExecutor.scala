@@ -9,48 +9,57 @@ object SymbolicExecutor {
   def evalOp(op: Op, state: StackWithNegativeSize[BigInt]): StackWithNegativeSize[BigInt] = {
     op match {
       case Push(n)                   => state push BigInt(1, n.toArray)
-      case Swap(n) if n < state.size => state swap n
-      case Dup(n) if n <= state.size => state dup n
-      case And if state.size >= 2 && state.pop._1 >= Some(0) && state.pop._2.pop()._1 >= Some(0) =>
+      case Swap(n) => state swap n
+      case Dup(n)  => state dup n
+      case And if state.pop()._1.get >= 0 && state.pop()._2.pop()._1.get >= 0    =>
         val (Some(x), t) = state.pop()
         val (Some(y), res) = t.pop()
         res.push(x & y)
 
       case op =>
         val r = OpCodes.stackReadCount(op)
-        val (args, s) = if (state.size >= r) state.pop(r) else state.pop(state.size)
+        val (args, s) = state.pop(r)
         val w = OpCodes.stackWriteCount(op)
         val resState = (1 to w).foldLeft(s) { case (state, n) => state push BigInt(-n) }
         resState
     }
   }
 
-  def eval(ops: Vector[Op]): Unit = {
+  def eval(ops: Vector[Op]): Set[AddressedJumpOp] = {
     val jumpdest = ops.zipWithIndex.collect { case t @ (JumpDest(addr), ind) => addr -> ind }.toMap
 
-    var used = Set.empty[Int]
+    var used = Set.empty[(Int,Int)]
     var usedI = Set.empty[Int]
 
     def eval(stack: StackWithNegativeSize[BigInt])(i: Int,
                                                    acc: SymbolicExecutionResult): List[SymbolicExecutionResult] = {
       usedI = usedI + i
       ops(i) match {
-        case Return | Return(_) |  SelfDestruct | Stop | Invalid | Revert => List(acc)
+        case Return | Return(_) |  SelfDestruct | Stop | Invalid | Revert =>
+          if(stack.asInstanceOf[StackList[BigInt]].state.contains(BigInt(641)))
+            {
+              2 -> 3
+            }
+          List(acc)
         case SelfAddressedJump(addr) =>
-          val (Some(to), state) = stack.pop()
+          val (Some(toBI), state) = stack.pop()
+          val to = toBI.intValue()
           val ind = jumpdest(to.intValue())
-          if (!used.contains(to.intValue())) {
-            used = used + to.intValue()
+          if (!used.contains(addr -> to.intValue())) {
+            used = used + (addr -> to.intValue())
             eval(state)(ind, acc.copy(jumps = acc.jumps + Jump(addr, to.intValue())))
           } else List(acc.copy(jumps = acc.jumps + Jump(addr, to.intValue())))
+
         case SelfAddressedJumpI(addr) =>
-          val (Some(to), tail) = stack.pop()
+          val (Some(toBI), tail) = stack.pop()
+          val to = toBI.intValue()
           val (_, r) = tail.pop()
           val ind = jumpdest(to.intValue())
-          if (!used.contains(to.intValue())) {
-            used = used + to.intValue()
+          if (!used.contains(addr -> to.intValue())) {
+            used = used + (addr -> to.intValue())
             eval(r)(ind, acc.copy(jumpis = acc.jumpis + JumpI(addr, to.intValue()))) ++ eval(r)(i + 1, acc)
           } else List(acc.copy(jumpis = acc.jumpis + JumpI(addr, to.intValue()))) ++ eval(r)(i + 1, acc)
+
         case op =>
           val state = evalOp(op, stack)
           eval(state)(i + 1, acc)
@@ -58,12 +67,14 @@ object SymbolicExecutor {
   }
     val r = eval(StackList.empty)(0, SymbolicExecutionResult(Set.empty, Set.empty, Nil))
 
-    val x = r.flatMap(t => t.jumps ++ t.jumpis).toSet
+    val x: Set[AddressedJumpOp] = r.flatMap(t => t.jumps ++ t.jumpis).toSet
     val x1 = x.map(_.addr)
     val x2 = r.flatMap(t => t.jumps.map(_.dest) ++ t.jumpis.map(_.dest)).toSet
     val s = ops.zipWithIndex.filter{case (_,ind) => !usedI.contains(ind)}
-    x -> x1 -> x2 -> s
-    ???
+    x1 -> x2 -> s
+    x
+
+    //01C3
   }
 
   def eval(main: List[List[Op]],
@@ -121,9 +132,11 @@ object SymbolicExecutor {
       }
     }
 
+    val initStack = new StackList(List.fill(100)(BigInt(-1)),100)
+
     val r = main.foldLeft(List.empty[SymbolicExecutionResult]) {
       case (acc, block) =>
-        acc ++ eval(StackList.empty)(block,
+        acc ++ eval(initStack)(block,
                                      withJumpDest,
                                      withJumpI,
                                      SymbolicExecutionResult(Set.empty, Set.empty, Nil),
@@ -132,7 +145,7 @@ object SymbolicExecutor {
 
     val r1 = withJumpDest.foldLeft(List.empty[SymbolicExecutionResult]) {
       case (acc, block) =>
-        acc ++ eval(StackList.empty)(block._2.ops,
+        acc ++ eval(initStack)(block._2.ops,
                                      withJumpDest,
                                      withJumpI,
                                      SymbolicExecutionResult(Set.empty, Set.empty, Nil),

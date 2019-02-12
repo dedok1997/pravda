@@ -1,7 +1,6 @@
 package pravda.evm.translate.opcode
 
 import pravda.evm.debug.evm._
-import pravda.evm.utils.evmWord
 import utest.{TestSuite, Tests}
 import utest._
 import pravda.vm.sandbox.VmSandbox.Preconditions
@@ -23,22 +22,25 @@ object DebuggerDemo extends TestSuite {
 
       val preconditions = Preconditions(
         `watts-limit` = 100000L,
-//        stack = Seq(
+        stack = Seq(
 //          Data.Primitive.Bytes(
 //            ByteString
 //              .copyFrom((1 to 32).toArray.map(_.toByte))
 //              .concat(ByteString.copyFrom(Array.fill[Byte](32 - 32)(0)))),
 //          Data.Primitive.Int64(10),
 //          Data.Primitive.Utf8("emitTokens")
-        stack = Seq(Data.Primitive.Utf8("get")),
-        storage = Map(evmWord(Array(0)) -> evmWord(Array(1)))
+          Data.Primitive.BigInt(BigInt(69)),
+          Data.Primitive.Utf8("balanceOf")
+
+     //   stack = Seq(Data.Primitive.Utf8("get")),
+     //   storage = Map(evmWord(Array(0)) -> evmWord(Array(1)))
         )
-//          Data.Primitive.BigInt(BigInt(69)),
-//          Data.Primitive.Utf8("balanceOf")),
+      )
+
         //stack = Seq(Data.Primitive.Int64(10), Data.Primitive.Utf8("set")),
 
-      val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("SimpleStorage/SimpleStorage.bin"))
-      val Right(abi) = AbiParser.parseAbi(readSolidityABI("SimpleStorage/SimpleStorage.abi"))
+      val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("erc/erc.bin"))
+      val Right(abi) = AbiParser.parseAbi(readSolidityABI("erc/erc.abi"))
 //      for{
 //        code1 <- Blocks.splitToCreativeAndRuntime(ops)
 //        (creationCode1, actualContract1) = code1

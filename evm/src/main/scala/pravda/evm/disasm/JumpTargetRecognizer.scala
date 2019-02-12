@@ -26,7 +26,12 @@ object JumpTargetRecognizer {
   def apply(ops: EvmCode): Either[(Set[WithJumpDest],Set[AddressedJumpOp]), List[Addressed[Op]]] = {
 
     val blocks = Blocks.split(ops.code.map(_._2))
-    val (jumps, jumpdests) = SymbolicExecutor.jumps(blocks)
+    val (jumps1, jumpdests) = SymbolicExecutor.jumps(blocks)
+
+    val jumps2 = SymbolicExecutor.eval(ops.code.map(_._2).toVector)
+
+    val jumps = (jumps1 ++ jumps2).groupBy(_.addr)
+      .filter(_._2.size == 1).map(_._2.head)
 
     val jumpsMap: Map[Int, AddressedJumpOp] = jumps.map {
       case j @ JumpI(addr, _) => addr -> j
@@ -39,13 +44,13 @@ object JumpTargetRecognizer {
       case a                                                          => a
     }
 
-    val unrecognizedJumps: List[AddressedJumpOp] = newOps.collect{
-      case (ind,j@SelfAddressedJumpI(ind1)) => j
-      case (ind,j@SelfAddressedJump(ind1)) => j
-    }
+//    val unrecognizedJumps: List[AddressedJumpOp] = newOps.collect{
+//      case (ind,j@SelfAddressedJumpI(ind1)) => j
+//      case (ind,j@SelfAddressedJump(ind1)) => j
+//    }
 
-    if (jumpdests.isEmpty)
+    //if (jumpdests.isEmpty)
       Right(newOps)
-    else Left(jumpdests -> unrecognizedJumps.toSet)
+    //else Left(jumpdests -> unrecognizedJumps.toSet)
   }
 }

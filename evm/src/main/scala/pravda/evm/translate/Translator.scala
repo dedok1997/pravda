@@ -24,7 +24,7 @@ import pravda.evm.EVM
 import pravda.evm.EVM.JumpDest
 import pravda.evm.abi.parse.AbiParser
 import pravda.evm.abi.parse.AbiParser.AbiObject
-import pravda.evm.disasm.{Blocks, StackSizePredictor}
+import pravda.evm.disasm.{Blocks, JumpTargetRecognizer, StackSizePredictor}
 import pravda.evm.translate.opcode._
 import pravda.vm.asm.Operation
 import pravda.vm.{Data, Opcodes, asm}
@@ -73,7 +73,7 @@ object Translator {
             CallDataSize(1) ::
             Lt ::
             Push(_: Bytes) ::
-            JumpI(_, _)
+            JumpI(_,_)
             :: rest =>
         filterCode(rest)
       case Push(Bytes(0x00)) ::
@@ -97,8 +97,8 @@ object Translator {
       case CallValue ::
             Dup(1) ::
             IsZero ::
-            Push(_: Bytes) ::
-            JumpI(addr, dest) ::
+            Push(_) ::
+            JumpI(addr,dest) ::
             Push(Bytes(0x00)) ::
             Dup(1) ::
             Revert :: rest =>
@@ -114,8 +114,7 @@ object Translator {
     for {
       code1 <- Blocks.splitToCreativeAndRuntime(ops)
       (creationCode1, actualContract1) = code1
-     // code2 <- JumpTargetRecognizer(actualContract1).left.map(_.toString)
-      code2 = actualContract1.code
+      code2 <- JumpTargetRecognizer(actualContract1).left.map(_.toString)
       ops = StackSizePredictor.clear(StackSizePredictor.emulate(code2.map(_._2)))
       filtered = filterCode(ops)
 

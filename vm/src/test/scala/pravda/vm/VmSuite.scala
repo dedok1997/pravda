@@ -10,15 +10,15 @@ import pravda.vm
 import pravda.vm.Data.Primitive
 import pravda.vm.asm.PravdaAssembler
 import pravda.vm.json._
-import pravda.vm.sandbox.VmSandbox
+
 
 object VmSuiteData {
-  final case class Preconditions(vm: VmSandbox.Preconditions, code: String)
+  final case class Preconditions(vm:  pravda.vm.sandbox.VmSandbox.Preconditions, code: String)
 }
 
 import pravda.vm.VmSuiteData._
 
-object VmSuite extends Plaintest[Preconditions, VmSandbox.Expectations] {
+object VmSuite extends Plaintest[Preconditions,  pravda.vm.sandbox.VmSandbox.Expectations] {
   lazy val dir = new File("vm/src/test/resources")
   override lazy val ext = "sbox"
   override lazy val formats =
@@ -34,8 +34,8 @@ object VmSuite extends Plaintest[Preconditions, VmSandbox.Expectations] {
       json4sKeyFormat[Primitive.Ref] +
       json4sKeyFormat[Primitive]
 
-  override def produce(input: Preconditions): Either[String, VmSandbox.Expectations] =
+  override def produce(input: Preconditions): Either[String,  pravda.vm.sandbox.VmSandbox.Expectations] =
     for {
       asm <- PravdaAssembler.assemble(input.code, saveLabels = true).left.map(_.mkString)
-    } yield VmSandbox.run(input.vm, asm)
+    } yield  pravda.vm.sandbox.VmSandbox.run(input.vm, asm)
 }
