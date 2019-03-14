@@ -1,5 +1,6 @@
 package pravda.evm.translate.opcode
 
+import com.google.protobuf.ByteString
 import pravda.evm.debug.evm._
 import utest.{TestSuite, Tests}
 import utest._
@@ -29,8 +30,8 @@ object DebuggerDemo extends TestSuite {
 //              .concat(ByteString.copyFrom(Array.fill[Byte](32 - 32)(0)))),
 //          Data.Primitive.Int64(10),
 //          Data.Primitive.Utf8("emitTokens")
-          Data.Primitive.BigInt(BigInt(69)),
-          Data.Primitive.Utf8("balanceOf")
+          Data.Primitive.Bytes(ByteString.copyFrom((1 to 20).map(_.toByte).toArray)),
+          Data.Primitive.Utf8("get")
 
      //   stack = Seq(Data.Primitive.Utf8("get")),
      //   storage = Map(evmWord(Array(0)) -> evmWord(Array(1)))
@@ -39,8 +40,8 @@ object DebuggerDemo extends TestSuite {
 
         //stack = Seq(Data.Primitive.Int64(10), Data.Primitive.Utf8("set")),
 
-      val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("erc/erc.bin"))
-      val Right(abi) = AbiParser.parseAbi(readSolidityABI("erc/erc.abi"))
+      val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("SimpleStorage/SimpleStorage.bin"))
+      val Right(abi) = AbiParser.parseAbi(readSolidityABI("SimpleStorage/SimpleStorage.abi"))
 //      for{
 //        code1 <- Blocks.splitToCreativeAndRuntime(ops)
 //        (creationCode1, actualContract1) = code1

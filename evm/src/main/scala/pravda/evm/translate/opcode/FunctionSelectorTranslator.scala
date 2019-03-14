@@ -24,7 +24,10 @@ import pravda.evm.translate.Translator.Converted
 import pravda.vm.{Data, Opcodes}
 import pravda.vm.asm.Operation
 
+import scala.annotation.tailrec
+
 object FunctionSelectorTranslator {
+  import fastparse.byte.all.Bytes
 
   private def createCallData(argsNum: Int): List[Operation] =
     (argsNum + 2).to(3, -1).toList.flatMap(i => List(pushInt(i), Operation(Opcodes.SWAPN))) ++
@@ -44,33 +47,56 @@ object FunctionSelectorTranslator {
            Operation(Opcodes.SWAP),
            Operation.Push(Data.Primitive.Null))
 
+
+  @tailrec def hashes(ops: List[EVM.Op],acc: Set[(Bytes,JumpI)] = Set.empty): Set[(Bytes,JumpI)] =
+    ops match {
+      case Dup(1) ::
+        Push(b) ::
+        Eq ::
+        Push(_) ::
+        (j@JumpI(_, addr)) :: rest =>
+          hashes(rest,acc + (b -> j))
+      case h :: t => hashes(t,acc)
+      case _      => acc
+    }
+
+  import pravda.evm.function.CodeGenerator._
+  def byFirstBytesSelector(hashes: Set[(Bytes,JumpI)]): List[Operation] = {
+    val f = dup(2) ~ pushInt(4) ~ pushInt(0) ~ slice
+    val s = hashes.toList.flatMap { case (h, j) =>
+      Dup(1) :: Push(h) :: Eq :: Push(Bytes(j.addr)) :: j :: Nil
+    }.map(SimpleTranslation.evmOpToOps).flatMap(_.right.get) ~
+      List(Operation.Push(Data.Primitive.Utf8("Incorrect destination")), Operation(Opcodes.THROW))
+    f ~ s
+  }
+
   def evmToOps(ops: List[EVM.Op], abi: List[AbiFunction]): List[Converted] = {
 
-    def aux(code: List[EVM.Op]): List[Converted] = {
-      import fastparse.byte.all.Bytes
+    def aux(code: List[EVM.Op],acc: List[Converted]): List[Converted] = {
 
       code match {
         case (firstOp @ Dup(1)) ::
-              Push(Bytes(hash @ _*)) ::
+              Push(b @ Bytes(hash @ _*)) ::
               Eq ::
               Push(_: Bytes) ::
               JumpI(_, addr) :: rest =>
           abi.find(_.id == hash) match {
             case Some(f) =>
-              Right(
+              val ops = Right(
                 codeToOps(Opcodes.DUP) ++
                   List(pushString(f.newName.getOrElse(f.name))) ++
                   codeToOps(Opcodes.EQ, Opcodes.NOT) ++
                   List(Operation.JumpI(Some(s"not_${f.name}"))) ++
                   createCallData(f.inputs.length) ++
-                  List(Operation.Jump(Some(nameByAddress(addr))), Operation.Label(s"not_${f.name}"))) :: aux(rest)
-            case None => Left(firstOp) :: aux(code.tail)
+                  List(Operation.Jump(Some(nameByAddress(addr))), Operation.Label(s"not_${f.name}")))
+              aux(rest,ops :: acc)
+            case None => aux(code.tail,Left(firstOp) :: acc)
           }
-        case h :: t => Left(h) :: aux(t)
-        case _      => List.empty
+        case h :: t => aux(t,Left(h) :: acc)
+        case _      => acc.reverse
       }
     }
 
-    aux(ops)
+    aux(ops,Nil)
   }
 }

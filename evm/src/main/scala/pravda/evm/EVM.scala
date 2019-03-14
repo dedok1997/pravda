@@ -108,6 +108,10 @@ object EVM {
 
   case class CallDataLoad(stackOffset: Int) extends Op
   case class CallDataSize(stackOffset: Int) extends Op
+  case class CallDataCopy(stackOffset: Int) extends Op
+  case class Call(stackSize: Int) extends Op
+  case class StaticCall(stackSize: Int) extends Op
+
 
   case class Sha3(stackOffset: Int)   extends Op
   case class Return(stackOffset: Int) extends Op

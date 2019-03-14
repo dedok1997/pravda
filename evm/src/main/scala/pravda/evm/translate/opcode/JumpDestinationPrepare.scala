@@ -19,7 +19,6 @@ package pravda.evm.translate.opcode
 
 import pravda.evm.EVM
 import pravda.evm.EVM.JumpDest
-import pravda.evm.translate.Translator.startLabelName
 import pravda.vm.asm.Operation
 import pravda.vm.{Opcodes, asm}
 
@@ -51,5 +50,5 @@ object JumpDestinationPrepare {
   }
 
   def prepared(jumpDests: List[(JumpDest, Int)]): List[asm.Operation] =
-    Operation.Jump(Some(startLabelName)) :: jumpDests.flatMap(jumpDestToOps) ::: lastBranch(jumpDests.size)
+     jumpDests.flatMap(jumpDestToOps) ::: lastBranch(jumpDests.size)
 }

@@ -110,6 +110,12 @@ class VmImpl extends Vm {
     while (continue && program.hasRemaining) {
       counter.cpuUsage(CpuBasic)
       val op = program.get() & 0xff
+
+      {
+        println(pravda.vm.asm.Operation.mnemonicByOpcode(op))
+        val pr: Any => Unit = s => println("\t" + s)
+        mem.stack.reverse.foreach(pr)
+      }
       mem.setCounter(program.position())
       (op: @switch) match {
         // Control operations

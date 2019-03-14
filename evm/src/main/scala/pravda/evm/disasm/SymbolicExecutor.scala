@@ -35,30 +35,30 @@ object SymbolicExecutor {
                                                    acc: SymbolicExecutionResult): List[SymbolicExecutionResult] = {
       usedI = usedI + i
       ops(i) match {
-        case Return | Return(_) |  SelfDestruct | Stop | Invalid | Revert =>
-          if(stack.asInstanceOf[StackList[BigInt]].state.contains(BigInt(641)))
-            {
-              2 -> 3
-            }
-          List(acc)
-        case SelfAddressedJump(addr) =>
+
+        case SelfAddressedJump(addr)  =>
           val (Some(toBI), state) = stack.pop()
           val to = toBI.intValue()
-          val ind = jumpdest(to.intValue())
-          if (!used.contains(addr -> to.intValue())) {
-            used = used + (addr -> to.intValue())
-            eval(state)(ind, acc.copy(jumps = acc.jumps + Jump(addr, to.intValue())))
-          } else List(acc.copy(jumps = acc.jumps + Jump(addr, to.intValue())))
+          if (jumpdest.contains(to)) {
+            val ind = jumpdest(to)
+            if (!used.contains(addr -> to)) {
+              used = used + (addr -> to)
+              eval(state)(ind, acc.copy(jumps = acc.jumps + Jump(addr, to)))
+            } else List(acc)
+          } else List(acc)
 
         case SelfAddressedJumpI(addr) =>
           val (Some(toBI), tail) = stack.pop()
           val to = toBI.intValue()
           val (_, r) = tail.pop()
           val ind = jumpdest(to.intValue())
-          if (!used.contains(addr -> to.intValue())) {
-            used = used + (addr -> to.intValue())
-            eval(r)(ind, acc.copy(jumpis = acc.jumpis + JumpI(addr, to.intValue()))) ++ eval(r)(i + 1, acc)
-          } else List(acc.copy(jumpis = acc.jumpis + JumpI(addr, to.intValue()))) ++ eval(r)(i + 1, acc)
+          if (!used.contains(addr -> to)) {
+            used = used + (addr -> to)
+            eval(r)(ind, acc.copy(jumpis = acc.jumpis + JumpI(addr, to))) ++ eval(r)(i + 1, acc)
+          } else List(acc.copy(jumpis = acc.jumpis + JumpI(addr, to))) ++ eval(r)(i + 1, acc)
+
+        case op if OpCodes.terminate(op)=>
+          List(acc)
 
         case op =>
           val state = evalOp(op, stack)
@@ -66,15 +66,7 @@ object SymbolicExecutor {
       }
   }
     val r = eval(StackList.empty)(0, SymbolicExecutionResult(Set.empty, Set.empty, Nil))
-
-    val x: Set[AddressedJumpOp] = r.flatMap(t => t.jumps ++ t.jumpis).toSet
-    val x1 = x.map(_.addr)
-    val x2 = r.flatMap(t => t.jumps.map(_.dest) ++ t.jumpis.map(_.dest)).toSet
-    val s = ops.zipWithIndex.filter{case (_,ind) => !usedI.contains(ind)}
-    x1 -> x2 -> s
-    x
-
-    //01C3
+    r.flatMap(t => t.jumps ++ t.jumpis).toSet
   }
 
   def eval(main: List[List[Op]],

@@ -24,12 +24,14 @@ object OpCodes {
 
   val terminate: PartialFunction[EVM.Op, Boolean] = {
 
-    case Return       => true
-    case SelfDestruct => true
-    case Stop         => true
-    case Invalid      => true
-    case Revert       => true
-    case _            => false
+    case Return                => true
+    case SelfDestruct          => true
+    case Stop                  => true
+    case Invalid               => true
+    case Revert                => true
+    case SelfAddressedJump(_)  => true
+    case SelfAddressedJumpI(_) => true
+    case _                     => false
   }
 
   def handle(op: EVM.Op, size: Int): Int = size - stackReadCount(op) + stackWriteCount(op)

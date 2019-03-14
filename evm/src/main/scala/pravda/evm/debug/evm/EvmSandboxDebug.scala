@@ -44,6 +44,6 @@ object EvmSandboxDebug {
 
     for {
       asmProgram <- asmProgramE
-    } yield show.show(VmSandboxDebug.run(input, asmProgram))
+    } yield show.show(implicitly[Debugger[S]].prettifier(VmSandboxDebug.run(input, asmProgram)))
   }
 }

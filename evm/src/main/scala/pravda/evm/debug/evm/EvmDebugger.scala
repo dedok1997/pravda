@@ -28,6 +28,8 @@ import pravda.vm._
 import pravda.vm.asm.Operation.mnemonicByOpcode
 import pravda.vm.sandbox.VmSandbox.StorageSandbox
 
+import scala.annotation.tailrec
+
 sealed trait DebugLog
 
 final case class EvmOpLog(op: String)                                                        extends DebugLog
@@ -59,10 +61,50 @@ object EvmDebugger extends Debugger[DebugLog] {
         ErrorLog(s"${mnemonicByOpcode(op)} - ${e.toString}", memorySnap, storageSnap)
     }
 
-    println(debugLogShow(true,false,true).show(log))
-
+    //println(debugLogShow(true,false,false).show(log))
     log
   }
+
+
+   import pravda.vm.operations._
+   override def prettifier(logs: List[DebugLog]): List[DebugLog] = {
+     @tailrec def aux(logs: List[DebugLog],acc: List[DebugLog] = Nil):List[DebugLog] =
+     logs match {
+       case Nil => acc.reverse
+       case PravdaOpLog("push", m, _) :: PravdaOpLog("dupn", mem, storage) :: xs =>
+         val offs = integer(m.stack.reverse.head)
+         aux(xs, PravdaOpLog(s"dup($offs)", mem, storage) :: acc)
+       case PravdaOpLog("push", m, _) :: PravdaOpLog("swapn", mem, storage) :: xs =>
+         val offs = integer(m.stack.reverse.head)
+         aux(xs, PravdaOpLog(s"swapn($offs)", mem, storage) :: acc)
+
+       case PravdaOpLog("dup", mem, storage) :: xs =>
+         aux(xs, PravdaOpLog(s"dup(1)", mem, storage) :: acc)
+
+       case PravdaOpLog("swap", mem, storage) :: xs =>
+         aux(xs, PravdaOpLog(s"swap(1)", mem, storage) :: acc)
+
+       case PravdaOpLog("pop", _, _) ::
+            PravdaOpLog(lbl, _, _) ::
+            PravdaOpLog("push", m, _) ::
+            PravdaOpLog("jump", mem, storage) :: xs =>
+         val offs = offset(m.stack.reverse.head)
+         aux(xs, PravdaOpLog(s"Jump to $lbl in $offs", mem, storage) :: acc)
+
+       case PravdaOpLog(lbl, _, _) ::
+            PravdaOpLog("push", m, _) ::
+            PravdaOpLog("jumpi", mem, storage) :: xs =>
+         val offs = offset(m.stack.reverse.head)
+         val cond = boolean(m.stack.reverse.tail.head)
+
+         aux(xs, PravdaOpLog(s"JumpI($cond) to $lbl in $offs", mem, storage) :: acc)
+
+
+
+       case x :: xs => aux(xs, x :: acc)
+     }
+     aux(logs)
+   }
 
   def debugLogShow(showStack: Boolean, showHeap: Boolean, showStorage: Boolean): cats.Show[DebugLog] = { log =>
     def t(count: Int)(s: String) = "\t" * count + s

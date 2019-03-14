@@ -19,13 +19,12 @@ package pravda.evm.debug.evm
 
 import pravda.evm.EVM
 import pravda.evm.abi.parse.AbiParser.AbiObject
-import pravda.evm.disasm.{Blocks, JumpTargetRecognizer, StackSizePredictor}
 import pravda.evm.translate.Translator._
 import pravda.evm.translate.opcode._
 import pravda.vm.asm.Operation
-import pravda.vm.{Meta, Opcodes, asm}
+import pravda.vm.{Meta, asm}
 import cats.implicits._
-import pravda.evm.EVM.JumpDest
+import pravda.evm.translate.Translator
 
 object EvmDebugTranslator {
 
@@ -46,31 +45,7 @@ object EvmDebugTranslator {
   }
 
   def debugTranslateActualContract(ops: List[Addressed[EVM.Op]],
-                                   abi: List[AbiObject]): Either[String, List[asm.Operation]] = {
-    for {
-      code1 <- Blocks.splitToCreativeAndRuntime(ops)
-      (creationCode1, actualContract1) = code1
-      code = JumpTargetRecognizer(actualContract1)
-
-      _ = actualContract1.code.foreach(println)
-      code2 <- code.left.map(_.toString)
-      ops1 = StackSizePredictor.emulate(code2.map(_._2))
-      ops = StackSizePredictor.clear(ops1)
-      filtered = filterCode(ops)
-      jumpDests = filtered.collect{case j@JumpDest(addr) => j}.zipWithIndex
-      prepared = JumpDestinationPrepare.prepared(jumpDests)
-
-      res <- EvmDebugTranslator(filtered, abi).map(
-        opcodes =>
-        prepared :::
-          Operation.Label(startLabelName) ::
-            createArray(defaultMemorySize) :::
-            Operation(Opcodes.SWAP) ::
-            opcodes :::
-            StdlibAsm.stdlibFuncs.flatMap(_.code) :::
-            convertResult(abi)
-      )
-    } yield res
-  }
+                                   abi: List[AbiObject]): Either[String, List[asm.Operation]] =
+    Translator.translateActualContract(ops,abi,apply)
 
 }

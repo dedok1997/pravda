@@ -22,7 +22,7 @@ object EvmSandbox {
   def runAddressedCode(input: VmSandbox.Preconditions,
                        code: Seq[Addressed[EVM.Op]],
                        abi: Seq[AbiObject]): Either[String, VmSandbox.ExpectationsWithoutWatts] = {
-    val asmOps = Translator.translateActualContract(code.toList, abi.toList)
+    val asmOps = Translator.translateActualContract(code.toList, abi.toList,Translator.apply)
     val asmProgramE = asmOps.map(ops => PravdaAssembler.assemble(ops, saveLabels = true))
 
     for {

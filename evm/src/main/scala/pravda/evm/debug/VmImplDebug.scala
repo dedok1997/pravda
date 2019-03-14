@@ -22,9 +22,9 @@ import java.nio.ByteBuffer
 import com.google.protobuf.ByteString
 import pravda.common.domain
 import pravda.common.domain.Address
-import pravda.vm.Error.PcallDenied
+import pravda.vm.Error.{NoSuchProgram, PcallDenied}
 import pravda.vm.Opcodes._
-import pravda.vm.WattCounter.CpuBasic
+import pravda.vm.WattCounter.{CpuBasic, CpuStorageUse}
 import pravda.vm._
 import pravda.vm.impl.MemoryImpl
 import pravda.vm.operations._
@@ -34,22 +34,15 @@ import scala.util.Try
 import pravda.evm.debug.DebugVm.{InterruptedExecution, MetaExecution, UnitExecution}
 import pravda.vm.sandbox.VmSandbox.StorageSandbox
 import DebugVm.ExecutionResult
+import pravda.vm.sandbox.VmSandbox
 
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
 class VmImplDebug extends DebugVm {
 
-  val vm: Vm = new Vm {
 
-    def spawn(initialProgram: ByteString, environment: Environment, wattLimit: Long): pravda.vm.ExecutionResult =
-      throw new Exception("It's debug vm.")
+  var lastOp: Either[Throwable,ExecutionResult] = null
 
-    def run(programAddress: Address,
-            environment: Environment,
-            memory: Memory,
-            wattCounter: WattCounter,
-            pcallAllowed: Boolean): Unit = throw new Exception("It's debug vm. You can't use pcall, lcall opcodes")
-  }
 
   def debugBytes[S](program: ByteBuffer,
                     env: Environment,
@@ -57,7 +50,37 @@ class VmImplDebug extends DebugVm {
                     counter: WattCounter,
                     storage: StorageSandbox,
                     maybePA: Option[domain.Address],
-                    pcallAllowed: Boolean)(implicit debugger: Debugger[S]): List[S] = {
+                    pcallAllowed: Boolean)(implicit D: Debugger[S]): List[S] = {
+
+
+    val pcalls = ArrayBuffer.empty[List[S]]
+    val vm: Vm = new Vm {
+
+      def spawn(initialProgram: ByteString, environment: Environment, wattLimit: Long): pravda.vm.ExecutionResult =
+        throw new Exception("It's debug vm.")
+
+      def run(programAddress: Address,
+              environment: Environment,
+              memory: Memory,
+              wattCounter: WattCounter,
+              pcallAllowed: Boolean): Unit = {
+        wattCounter.cpuUsage(CpuStorageUse)
+        environment.getProgram(programAddress) match {
+          case Some(program) =>
+            val res = debugBytes(program.code.asReadOnlyByteBuffer(),
+              environment,
+              memory.asInstanceOf[MemoryImpl],
+              wattCounter,
+              program.storage.asInstanceOf[VmSandbox.StorageSandbox],
+              Some(programAddress),
+              pcallAllowed)
+            pcalls.append(res)
+          case None =>
+            throw ThrowableVmError(NoSuchProgram)
+        }
+      }
+    }
+
 
     val logicalOperations = new LogicalOperations(mem, counter)
     val arithmeticOperations = new ArithmeticOperations(mem, counter)
@@ -152,13 +175,25 @@ class VmImplDebug extends DebugVm {
           case _ => UnitExecution(() => ())
         }
       }.toEither
-      val state = debugger.debugOp(program, op, mem, storage)(executionResult)
+      val state = D.debugOp(program, op, mem, storage)(executionResult)
       acc.append(state)
-      executionResult match {
-        case Right(InterruptedExecution) | Left(_) =>
-          acc
-        case _ => if (program.hasRemaining) proc(acc) else acc
+      op match {
+        case PCALL =>
+          acc.appendAll(pcalls.last)
+          lastOp match {
+            case Right(InterruptedExecution) | Left(_) =>
+              acc
+            case _ => if (program.hasRemaining) proc(acc) else acc
+          }
+        case _ =>
+          lastOp = executionResult
+          executionResult match {
+            case Right(InterruptedExecution) | Left(_) =>
+              acc
+            case _ => if (program.hasRemaining) proc(acc) else acc
+          }
       }
+
     }
     proc(ListBuffer.empty).toList
   }

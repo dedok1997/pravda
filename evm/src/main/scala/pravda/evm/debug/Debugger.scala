@@ -27,4 +27,6 @@ trait Debugger[S] {
 
   def debugOp(program: ByteBuffer, op: Int, mem: MemoryImpl, storage: StorageSandbox)(
       execResult: Either[Throwable, ExecutionResult]): S
+
+  def prettifier(l: List[S]): List[S] = l
 }

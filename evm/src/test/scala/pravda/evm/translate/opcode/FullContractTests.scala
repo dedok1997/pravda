@@ -141,8 +141,6 @@ object FullContractTests extends TestSuite {
       val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("SimpleToken/SimpleToken.bin"))
       val Right(abi) = AbiParser.parseAbi(readSolidityABI("SimpleToken/SimpleToken.abi"))
 
-      val x = EvmSandbox.runAddressedCode(preconditions, ops, abi)
-      x -> 1
       EvmSandbox.runAddressedCode(preconditions, ops, abi) ==> Right(
         ExpectationsWithoutWatts(
           stack = ArrayBuffer(Bool.True),

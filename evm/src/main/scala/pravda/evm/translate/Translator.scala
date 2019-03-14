@@ -21,13 +21,15 @@ import cats.instances.list._
 import cats.instances.either._
 import cats.syntax.traverse._
 import pravda.evm.EVM
-import pravda.evm.EVM.JumpDest
 import pravda.evm.abi.parse.AbiParser
 import pravda.evm.abi.parse.AbiParser.AbiObject
 import pravda.evm.disasm.{Blocks, JumpTargetRecognizer, StackSizePredictor}
+import pravda.evm.function.CodeGenerator
 import pravda.evm.translate.opcode._
 import pravda.vm.asm.Operation
 import pravda.vm.{Data, Opcodes, asm}
+
+import scala.annotation.tailrec
 
 object Translator {
 
@@ -43,7 +45,10 @@ object Translator {
   type Addressed[T] = (Int, T)
   type ContractCode = (CreationCode, ActualCode)
 
-  val startLabelName = "__start_evm_program"
+  val startLabelNameWithPravdaSpec = "__start_evm_program_pravda_spec"
+  val startLabelNameWithEvmSpec = "__start_evm_program_evm_spec"
+  val startEvmFuncSelect = "start_evm_func_select"
+
   val defaultMemorySize = 1024
 
   def apply(ops: List[EVM.Op], abi: List[AbiObject]): Either[String, List[asm.Operation]] = {
@@ -59,23 +64,23 @@ object Translator {
       .map(_.flatten)
   }
 
-  def filterCode(ops: List[EVM.Op]): List[EVM.Op] = {
+  @tailrec def filterCode(ops: List[EVM.Op],acc: List[EVM.Op] = Nil): List[EVM.Op] = {
     import fastparse.byte.all.Bytes
     import pravda.evm.EVM._
 
     ops match {
       case Push(Bytes(-128)) ::
             Push(Bytes(0x40)) ::
-            MStore(_) ::
+            MStore(2) ::
             rest =>
-        filterCode(rest)
+        filterCode(Push(Bytes(-128)) :: Push(Bytes(0x40)) :: MStore(3) :: rest,acc)
       case Push(Bytes(0x04)) ::
             CallDataSize(1) ::
             Lt ::
             Push(_: Bytes) ::
             JumpI(_,_)
             :: rest =>
-        filterCode(rest)
+        filterCode(rest,acc)
       case Push(Bytes(0x00)) ::
             CallDataLoad(1) ::
             Push(bs1: Bytes) ::
@@ -86,14 +91,14 @@ object Translator {
             rest
           if bs1 == Bytes.fromHex("0x0100000000000000000000000000000000000000000000000000000000").get &&
             bs2 == Bytes.fromHex("0xffffffff").get =>
-        filterCode(rest)
+        filterCode(rest,acc)
       case Push(Bytes(0x00)) ::
             CallDataLoad(1) ::
             Push(bs1: Bytes) ::
             Swap(1) ::
             Div ::
             rest if bs1 == Bytes.fromHex("0x0100000000000000000000000000000000000000000000000000000000").get =>
-        filterCode(rest)
+        filterCode(rest,acc)
       case CallValue ::
             Dup(1) ::
             IsZero ::
@@ -102,15 +107,19 @@ object Translator {
             Push(Bytes(0x00)) ::
             Dup(1) ::
             Revert :: rest =>
-        filterCode(Push(Bytes(0x7)) :: Push(Bytes(0x7)) :: Jump(addr, dest) :: rest)
+        filterCode(Push(Bytes(0x7)) :: Push(Bytes(0x7)) :: Jump(addr, dest) :: rest,acc)
 
-      case h :: t => h :: filterCode(t)
-      case _      => List.empty
+      case h :: t => filterCode(t,h :: acc)
+      case _      => acc.reverse
     }
   }
 
   def translateActualContract(ops: List[Addressed[EVM.Op]],
-                              abi: List[AbiObject]): Either[String, List[asm.Operation]] = {
+                              abi: List[AbiObject],
+                              translator: (List[EVM.Op], List[AbiObject]) => Either[String, List[asm.Operation]]): Either[String, List[asm.Operation]] = {
+    import pravda.evm.EVM._
+    import pravda.evm.function.CodeGenerator._
+
     for {
       code1 <- Blocks.splitToCreativeAndRuntime(ops)
       (creationCode1, actualContract1) = code1
@@ -120,16 +129,29 @@ object Translator {
 
       jumpDests = filtered.collect{case j@JumpDest(addr) => j}.zipWithIndex
       prepared = JumpDestinationPrepare.prepared(jumpDests)
-
-      res <- Translator(filtered, abi).map(
+      hashes = FunctionSelectorTranslator.hashes(filtered)
+      res <- translator(filtered, abi).map(
         opcodes =>
-          prepared :::
-          Operation.Label(startLabelName) ::
-            createArray(defaultMemorySize) :::
-            Operation(Opcodes.SWAP) ::
-            opcodes :::
-            StdlibAsm.stdlibFuncs.flatMap(_.code) :::
-            convertResult(abi)
+          createArray(defaultMemorySize) ~
+          swap(1) ~
+          dup(1) ~
+          push(Data.Primitive.Null) ~
+          CodeGenerator.eq ~
+          not ~
+          jumpi(Some(startLabelNameWithPravdaSpec)) ~
+          pop ~
+
+          swap(1) ~ dup(1) ~ length ~ pushInt(32) ~ gt ~ not ~
+            jumpi(Some(startEvmFuncSelect)) ~
+            expand ~
+            label(startEvmFuncSelect) ~
+            swap(1) ~
+            FunctionSelectorTranslator.byFirstBytesSelector(hashes) ~
+          prepared ~
+          label(startLabelNameWithPravdaSpec) ~
+          opcodes ~
+          StdlibAsm.stdlibFuncs.flatMap(_.code) ~
+          convertResult(abi)
       )
     } yield res
   }

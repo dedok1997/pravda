@@ -1,12 +1,20 @@
 package pravda.evm.translate.opcode
 
+import com.google.protobuf.ByteString
 import fastparse.byte.all._
+import pravda.common.domain.Address
 import pravda.evm.EVM._
-import pravda.evm.EvmSandbox
+import pravda.evm.abi.parse.AbiParser
+import pravda.evm.{EvmSandbox, readSolidityABI, readSolidityBinFile}
 import pravda.evm.abi.parse.AbiParser.AbiFunction
+import pravda.evm.debug.evm.{EvmDebugTranslator, EvmDebugger, EvmSandboxDebug}
+import pravda.evm.parse.Parser
 import pravda.evm.utils._
+import pravda.vm.Data
+import pravda.vm.asm.PravdaAssembler
 import pravda.vm.sandbox.VmSandbox.{ExpectationsWithoutWatts, Preconditions}
 import utest._
+
 
 object RunTests extends TestSuite {
 
@@ -114,6 +122,68 @@ object RunTests extends TestSuite {
 
       EvmSandbox.runCode(preconditions, List(Push(x), Push(x), Eq), abi) ==>
         Right(ExpectationsWithoutWatts(stack = Seq(evmWord(Array(1)))))
+    }
+
+    "CALL" - {
+      // gas addr value argsOffset argsLength retOffset retLength
+
+      //import pravda.evm.function.CodeGenerator._
+//      val externalProgram = PravdaAssembler.assemble(
+//        pop ~ stop, saveLabels = true)
+      val addr1 = ByteString.copyFrom((1 to 20).map(_.toByte).toArray)
+      val addr = Address @@ ByteString.copyFrom(( (1 to 20) ++ (21 to 32 map(_ => 0))).map(_.toByte).toArray)
+
+      //import scala.collection.mutable.ArrayBuffer
+      //import pravda.vm.Data.Primitive.{BigInt, Ref}
+//      val mem = ArrayBuffer(0 to 100 map(_.toByte) : _*)
+//      val preconditions = Preconditions(
+//        `watts-limit` = 10000L,
+//        stack = Seq(
+//          Ref(0),
+//          BigInt(scala.BigInt(10)),
+//          BigInt(scala.BigInt(20)),
+//          BigInt(scala.BigInt(10)),
+//          BigInt(scala.BigInt(0)),
+//          BigInt(scala.BigInt(1)),
+//          Data.Primitive.Bytes(addr1),
+//          BigInt(scala.BigInt(1))
+//        ),
+//        storage = Map(),
+//        heap = Map(Ref(0) -> Data.Array.Int8Array(mem)),
+//        programs = Map(addr -> Data.Primitive.Bytes(externalProgram))
+//      )
+
+//      val pr = SimpleTranslation.evmOpToOps(Call(7)).map(ops => PravdaAssembler.assemble(ops, saveLabels = true))
+//
+//      pr.map(asmProgram =>
+//        VmSandbox.ExpectationsWithoutWatts.fromExpectations(VmSandbox.run(preconditions, asmProgram))
+//      )
+
+
+
+      "External call" - {
+
+
+
+        val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("SimpleStorage/SimpleStorage.bin"))
+        val Right(abi) = AbiParser.parseAbi(readSolidityABI("SimpleStorage/SimpleStorage.abi"))
+
+        val program = EvmDebugTranslator.debugTranslateActualContract(ops,abi).map(ops => PravdaAssembler.assemble(ops, saveLabels = true))
+        //println(program)
+
+        val preconditions = Preconditions(`watts-limit` = 10000L,
+          stack = Seq(Data.Primitive.Bytes(addr1),Data.Primitive.Utf8("get")),
+          programs = Map(addr -> Data.Primitive.Bytes(program.right.get))
+        )
+
+        //println(EvmSandbox.runAddressedCode(preconditions, ops, abi))
+        implicit val debugger = EvmDebugger
+        implicit val showLog = EvmDebugger.debugLogShow(showStack = true, showHeap = false, showStorage = true)
+        implicit val showLogs = EvmDebugger.showDebugLogContainer
+        val Right(output) = EvmSandboxDebug.debugAddressedCode(preconditions, ops, abi)
+          println(output)
+      }
+
     }
   }
 }
