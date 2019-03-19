@@ -21,17 +21,15 @@ package servers
 
 import com.google.protobuf.ByteString
 import com.tendermint.abci._
-import tethys._
 import pravda.common.domain._
 import pravda.common.{bytes => byteUtils}
 import pravda.node.clients.AbciClient
 import pravda.node.data.blockchain.Transaction
 import pravda.node.data.blockchain.Transaction.{AuthorizedTransaction, SignedTransaction}
-import pravda.node.data.common.{ApplicationStateInfo, CoinDistributionMember, TransactionId}
+import pravda.node.data.common._
 import pravda.node.data.cryptography
 import pravda.node.data.serialization._
-import pravda.node.data.serialization.bjson._
-import pravda.node.data.serialization.json._
+import pravda.node.data.serialization.protobuf._
 import pravda.node.db.{DB, Operation}
 import pravda.node.persistence.BlockChainStore.balanceEntry
 import pravda.node.persistence.{FileStore, _}
@@ -39,6 +37,7 @@ import pravda.node.utils
 import pravda.vm
 import pravda.vm.impl.VmImpl
 import pravda.vm.{Environment, ProgramContext, Storage, _}
+import zhukov.Marshaller
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
@@ -164,8 +163,10 @@ class Abci(applicationStateDb: DB, abciClient: AbciClient, initialDistribution: 
   def deliverOrCheckTx[R](encodedTransaction: ByteString, environmentProvider: BlockDependentEnvironment)(
       result: (Int, String) => R): Future[R] = {
 
+    import pravda.node.data.serialization.json._
+
     val tid = TransactionId.forEncodedTransaction(encodedTransaction)
-    val `try` = Try(transcode(BJson @@ encodedTransaction.toByteArray).to[SignedTransaction])
+    val `try` = Try(transcode(Protobuf @@ encodedTransaction.toByteArray).to[SignedTransaction])
       .flatMap(verifySignedTx(_, tid, environmentProvider))
 
     Future.successful {
@@ -309,6 +310,7 @@ object Abci {
     private lazy val blockProgramsPath = new CachedDbPath(new PureDbPath(db, "program"), cache, operations)
     private lazy val blockEffectsPath = new CachedDbPath(new PureDbPath(db, "effects"), cache, operations)
     private lazy val eventsPath = new CachedDbPath(new PureDbPath(db, "events"), cache, operations)
+    private lazy val txIdIndexPath = new CachedDbPath(new PureDbPath(db, "txIdIndex"), cache, operations)
     private lazy val blockBalancesPath = new CachedDbPath(new PureDbPath(db, "balance"), cache, operations)
     private lazy val transactionsByAddressPath =
       new CachedDbPath(new PureDbPath(db, "transactionsByAddress"), cache, operations)
@@ -353,7 +355,7 @@ object Abci {
         storeEventsToAddress(eventsByAddressPath, executor, transactionId, transactionEffects)
       }
 
-      private def putByOffset[A: JsonWriter](dbPath: DbPath, address: Address, offset: Long, objToStore: A): Unit = {
+      private def putByOffset[A: Marshaller](dbPath: DbPath, address: Address, offset: Long, objToStore: A): Unit = {
         val key = keyWithOffset(byteUtils.byteString2hex(address), offset)
         dbPath.put(key, objToStore)
       }
@@ -589,7 +591,7 @@ object Abci {
         throw vm.ThrowableVmError(Error.ProgramIsSealed)
 
       val current = blockBalancesPath.getAs[NativeCoin](byteUtils.byteString2hex(address)).getOrElse(NativeCoin.zero)
-      blockBalancesPath.put(byteUtils.byteString2hex(address), current + amount)
+      blockBalancesPath.put[NativeCoin](byteUtils.byteString2hex(address), NativeCoin @@ (current + amount))
     }
 
     def commit(height: Long, validators: Vector[Address]): Unit = {
@@ -603,8 +605,11 @@ object Abci {
 
       if (effectsMap.nonEmpty) {
         val data = effectsMap.toMap.asInstanceOf[Map[TransactionId, Seq[Effect]]]
-        blockEffectsPath.put(byteUtils.bytes2hex(byteUtils.longToBytes(height)), data)
+        blockEffectsPath.put(byteUtils.bytes2hex(byteUtils.longToBytes(height)), Tuple1(data))
+        // TODO zhukov will probably support raw Maps without wrapper
       }
+
+      val txIndex = mutable.Map[TransactionId, mutable.Buffer[(Address, Long)]]()
 
       effectsMap
         .flatMap {
@@ -615,17 +620,32 @@ object Abci {
             }
         }
         .groupBy {
-          case (_, Effect.Event(address, name, _)) => (address, name)
+          case (_, Effect.Event(address, _, _)) => address
         }
         .foreach {
-          case ((address, name), evs) =>
-            val len = eventsPath.getAs[Long](eventKeyLength(address, name)).getOrElse(0L)
+          case (address, evs) =>
+            val len = eventsPath.getAs[Long](eventKeyLength(address)).getOrElse(0L)
             evs.zipWithIndex.foreach {
-              case ((tx, Effect.Event(_, _, data)), i) =>
-                eventsPath.put(eventKeyOffset(address, name, len + i.toLong), (tx, data))
+              case ((tx, Effect.Event(_, name, data)), i) =>
+                txIndex.get(tx) match {
+                  case Some(buf) => buf += ((address, len + i.toLong))
+                  case None      => txIndex(tx) = mutable.Buffer((address, len + i.toLong))
+                }
+                eventsPath.put(eventKeyOffset(address, len + i.toLong), (tx, name, data))
             }
-            eventsPath.put(eventKeyLength(address, name), len + evs.length.toLong)
+            eventsPath.put(eventKeyLength(address), len + evs.length.toLong)
         }
+
+      txIndex.foreach {
+        case (txId, offsets) =>
+          val len = txIdIndexPath.getAs[Long](transactionIdKeyLength(txId)).getOrElse(0L)
+          offsets.zipWithIndex.foreach {
+            case (offset, i) =>
+              txIdIndexPath.put(transactionIdKeyOffset(txId, len + i.toLong), offset)
+          }
+          txIdIndexPath.put(transactionIdKeyLength(txId), len + offsets.length.toLong)
+      }
+
       db.syncBatch(operations: _*)
       clear()
     }
