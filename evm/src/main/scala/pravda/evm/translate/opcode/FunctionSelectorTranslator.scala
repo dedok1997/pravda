@@ -62,7 +62,7 @@ object FunctionSelectorTranslator {
 
   import pravda.evm.function.CodeGenerator._
   def byFirstBytesSelector(hashes: Set[(Bytes,JumpI)]): List[Operation] = {
-    val f = dup(2) ~ pushInt(4) ~ pushInt(0) ~ slice
+    val f = dup(2) ~ pushInt(4) ~ pushInt(0) ~ slice ~ expand
     val s = hashes.toList.flatMap { case (h, j) =>
       Dup(1) :: Push(h) :: Eq :: Push(Bytes(j.addr)) :: j :: Nil
     }.map(SimpleTranslation.evmOpToOps).flatMap(_.right.get) ~

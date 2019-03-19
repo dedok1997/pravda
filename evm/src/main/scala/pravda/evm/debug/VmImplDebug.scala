@@ -95,7 +95,10 @@ class VmImplDebug extends DebugVm {
     @tailrec def proc(acc: ListBuffer[S]): ListBuffer[S] = {
       counter.cpuUsage(CpuBasic)
       val op = program.get() & 0xff
-
+      if(op == 115)
+        {
+          2 -> 3
+        }
       val executionResult = Try[ExecutionResult] {
         mem.setCounter(program.position())
         op match {
@@ -181,7 +184,7 @@ class VmImplDebug extends DebugVm {
         case PCALL =>
           acc.appendAll(pcalls.last)
           lastOp match {
-            case Right(InterruptedExecution) | Left(_) =>
+            case Left(_) =>
               acc
             case _ => if (program.hasRemaining) proc(acc) else acc
           }

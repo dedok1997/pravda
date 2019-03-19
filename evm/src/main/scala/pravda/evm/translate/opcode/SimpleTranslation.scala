@@ -87,7 +87,8 @@ object SimpleTranslation {
     case Eq             => bigintOp(Operation(Opcodes.EQ))
 
 
-    case Jump(_, dest)  => codeToOps(Opcodes.POP) ::: Operation.Jump(Some(nameByAddress(dest))) :: Nil
+    case Jump(_, dest)  =>
+      codeToOps(Opcodes.POP) ::: Operation.Jump(Some(nameByAddress(dest))) :: Nil
     case JumpI(_, dest) => pravda.evm.translate.opcode.jumpi(dest)
 
     case Jump  | SelfAddressedJump(_) =>
@@ -104,7 +105,12 @@ object SimpleTranslation {
     case Balance => codeToOps(Opcodes.BALANCE)
     case Address => codeToOps(Opcodes.PADDR)
 
-    case JumpDest(address) => asm.Operation.Label(nameByAddress(address)) :: Nil
+    case JumpDest(address) =>
+      if (address == 1160)
+        {
+          2 -> 3
+        }
+      asm.Operation.Label(nameByAddress(address)) :: Nil
 
     case SStore => codeToOps(Opcodes.SPUT)
     case SLoad  => List(Operation.Call(Some("stdlib_evm_sget")))
@@ -118,24 +124,20 @@ object SimpleTranslation {
     case Revert => List(Operation.Push(Data.Primitive.Utf8("Revert")), Operation(Opcodes.THROW))
 
     case Return(offset) =>
-      cast(Data.Type.BigInt) :::
-        List(Operation(Opcodes.SWAP)) :::
-        cast(Data.Type.BigInt) :::
-        List(Operation(Opcodes.SWAP)) :::
-        List(
-        pushInt(offset + 1),
-        Operation(Opcodes.DUPN),
-        pushInt8(6),
-        Operation(Opcodes.SCALL),
-        Operation(Opcodes.SWAP),
-        Operation(Opcodes.POP),
-        Operation(Opcodes.SWAP),
-        Operation(Opcodes.POP),
-        Operation(Opcodes.SWAP),
-        Operation(Opcodes.POP),
-        Operation(Opcodes.SWAP),
-        Operation.Jump(Some("convert_result"))
-      )
+      cast(Data.Type.BigInt) ~
+        swap(1) ~
+        cast(Data.Type.BigInt) ~
+        swap(1) ~
+        dup(offset + 1) ~
+        scall(6) ~
+        swap(1) ~
+        pop ~
+        swap(1) ~
+        pop ~swap(1) ~
+        pop ~
+        stop
+        //swap(1) ~
+       // Operation.Jump(Some("convert_result"))
     case CallValue => List(pushBytes(Array(0x01)))
     case CallDataSize(offset) =>
       pushInt(offset + 2) :: codeToOps(Opcodes.DUPN, Opcodes.LENGTH)
@@ -162,7 +164,7 @@ object SimpleTranslation {
         Operation.Push(Data.Primitive.Null) ~
         swap(2) ~ swap(1) ~ // addr 2 null mem[argsOffset : argsOffset + argsLength] retOffset retLength
         pcall ~ // bytes retOffset retLength
-        swap(2) ~ pop ~ writeToMemoryWithoutExpand(stackSize = stackSize - 5)
+        swap(2) ~ pop ~ writeToMemoryWithoutExpand(stackSize = stackSize - 5) ~ pushInt(1)
 
 
     case StaticCall(stackSize) =>
@@ -175,7 +177,7 @@ object SimpleTranslation {
         Operation.Push(Data.Primitive.Null) ~
         swap(2) ~ swap(1) ~ // addr 2 null mem[argsOffset : argsOffset + argsLength] retOffset retLength
         pcall ~ // bytes retOffset retLength
-        swap(2) ~ pop ~ writeToMemoryWithoutExpand(stackSize = stackSize - 4)
+        swap(2) ~ pop ~ writeToMemoryWithoutExpand(stackSize = stackSize - 4) ~ pushInt(1)
 
     case Log(n) =>
       codeToOps(List.fill(2 + n)(Opcodes.POP) : _*)

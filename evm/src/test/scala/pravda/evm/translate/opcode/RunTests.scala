@@ -131,6 +131,8 @@ object RunTests extends TestSuite {
 //      val externalProgram = PravdaAssembler.assemble(
 //        pop ~ stop, saveLabels = true)
       val addr1 = ByteString.copyFrom((1 to 20).map(_.toByte).toArray)
+      val addr2 = ByteString.copyFrom((2 to 21).map(_.toByte).toArray)
+
       val addr = Address @@ ByteString.copyFrom(( (1 to 20) ++ (21 to 32 map(_ => 0))).map(_.toByte).toArray)
 
       //import scala.collection.mutable.ArrayBuffer
@@ -165,14 +167,14 @@ object RunTests extends TestSuite {
 
 
 
-        val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("SimpleStorage/SimpleStorage.bin"))
-        val Right(abi) = AbiParser.parseAbi(readSolidityABI("SimpleStorage/SimpleStorage.abi"))
+        val Right(ops) = Parser.parseWithIndices(readSolidityBinFile("erc/erc.bin"))
+        val Right(abi) = AbiParser.parseAbi(readSolidityABI("erc/erc.abi"))
 
         val program = EvmDebugTranslator.debugTranslateActualContract(ops,abi).map(ops => PravdaAssembler.assemble(ops, saveLabels = true))
         //println(program)
 
         val preconditions = Preconditions(`watts-limit` = 10000L,
-          stack = Seq(Data.Primitive.Bytes(addr1),Data.Primitive.Utf8("get")),
+          stack = Seq(Data.Primitive.Bytes(addr1),Data.Primitive.Bytes(addr2),Data.Primitive.Utf8("transfer")),
           programs = Map(addr -> Data.Primitive.Bytes(program.right.get))
         )
 
@@ -180,8 +182,29 @@ object RunTests extends TestSuite {
         implicit val debugger = EvmDebugger
         implicit val showLog = EvmDebugger.debugLogShow(showStack = true, showHeap = false, showStorage = true)
         implicit val showLogs = EvmDebugger.showDebugLogContainer
-        val Right(output) = EvmSandboxDebug.debugAddressedCode(preconditions, ops, abi)
+        try {
+          val Right(output) = EvmSandboxDebug.debugAddressedCode(preconditions, ops, abi)
           println(output)
+        }catch {
+          case e: Exception =>
+        }
+
+        val asmOps = EvmDebugTranslator.debugTranslateActualContract(ops, abi)
+        val asmProgramE = asmOps.map(ops => PravdaAssembler.assemble(ops, saveLabels = true))
+
+         for {
+          asmProgram <- asmProgramE
+          asm = PravdaAssembler.disassemble(asmProgram)
+        } {
+           import pravda.vm.asm.Operation.mnemonicByOpcode
+           import pravda.vm.asm.Operation.Orphan
+                      asm.foreach{
+             case (q,Orphan(op)) => println(q + ":" + mnemonicByOpcode(op))
+             case op => println(op)
+           }
+         }
+
+
       }
 
     }

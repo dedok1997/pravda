@@ -61,7 +61,7 @@ object EvmDebugger extends Debugger[DebugLog] {
         ErrorLog(s"${mnemonicByOpcode(op)} - ${e.toString}", memorySnap, storageSnap)
     }
 
-    //println(debugLogShow(true,false,false).show(log))
+    println(debugLogShow(true,false,false).show(log))
     log
   }
 
@@ -75,9 +75,12 @@ object EvmDebugger extends Debugger[DebugLog] {
          val offs = integer(m.stack.reverse.head)
          aux(xs, PravdaOpLog(s"dup($offs)", mem, storage) :: acc)
        case PravdaOpLog("push", m, _) :: PravdaOpLog("swapn", mem, storage) :: xs =>
-         val offs = integer(m.stack.reverse.head)
-         aux(xs, PravdaOpLog(s"swapn($offs)", mem, storage) :: acc)
+         val offs = integer(m.stack.reverse.head) - 1
+         aux(xs, PravdaOpLog(s"swap($offs)", mem, storage) :: acc)
 
+       case PravdaOpLog("push", _, _) :: PravdaOpLog("cast", mem, storage) :: xs =>
+         val offs = mem.stack.reverse.head
+         aux(xs, PravdaOpLog(s"cast to $offs", mem, storage) :: acc)
        case PravdaOpLog("dup", mem, storage) :: xs =>
          aux(xs, PravdaOpLog(s"dup(1)", mem, storage) :: acc)
 

@@ -92,6 +92,7 @@ object OpCodes {
     case ExtCodeCopy => 4
 
     case DelegateCall => 6
+    case StaticCall     => 6
 
     case Call     => 7
     case CallCode => 7
