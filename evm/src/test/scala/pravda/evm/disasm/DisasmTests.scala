@@ -19,8 +19,8 @@ object DisasmTests extends TestSuite {
         Predef.assert(
           !Blocks.splitToCreativeAndRuntime(ops).exists {
             case (creative, runtime) =>
-              JumpTargetRecognizer(creative).exists { ops1 =>
-                JumpTargetRecognizer(runtime).exists { ops2 =>
+              val(_,ops1) = JumpTargetRecognizer(creative)
+              val(_,ops2) = JumpTargetRecognizer(runtime)
                   ops.zip(ops1 ::: ops2).exists {
                     case ((_, JumpI), (_, j)) =>
                       j match {
@@ -39,8 +39,6 @@ object DisasmTests extends TestSuite {
                       }
                     case _ => false
                   }
-                }
-              }
           },
           s"Error in ${f.getAbsolutePath}"
         )

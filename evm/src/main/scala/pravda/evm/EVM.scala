@@ -96,11 +96,16 @@ object EVM {
   trait AddressedJumpOp extends Op {
     def addr: Int
   }
+
+  trait TargetedJumpOp extends AddressedJumpOp {
+    def dest: Int
+  }
+
   final case class JumpDest(addr: Int)     extends Op
   case class SelfAddressedJump(addr: Int)  extends AddressedJumpOp
   case class SelfAddressedJumpI(addr: Int) extends AddressedJumpOp
-  case class Jump(addr: Int, dest: Int)    extends AddressedJumpOp
-  case class JumpI(addr: Int, dest: Int)   extends AddressedJumpOp
+  case class Jump(addr: Int, dest: Int)    extends TargetedJumpOp
+  case class JumpI(addr: Int, dest: Int)   extends TargetedJumpOp
 
   case class MLoad(stackOffset: Int)   extends Op
   case class MStore(stackOffset: Int)  extends Op

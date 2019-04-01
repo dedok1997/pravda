@@ -23,34 +23,24 @@ import pravda.evm.translate.Translator._
 
 object JumpTargetRecognizer {
 
-  def apply(ops: EvmCode): Either[(Set[WithJumpDest],Set[AddressedJumpOp]), List[Addressed[Op]]] = {
+  def apply(ops: EvmCode): (Set[TargetedJumpOp],List[Addressed[Op]]) = {
 
     val blocks = Blocks.split(ops.code.map(_._2))
-    val (jumps1, jumpdests) = SymbolicExecutor.jumps(blocks)
+    val jumps1 = SymbolicExecutor.jumps(blocks)
 
     val jumps2 = SymbolicExecutor.eval(ops.code.map(_._2).toVector)
 
-    val jumps = (jumps1 ++ jumps2).groupBy(_.addr)
-      .filter(_._2.size == 1).map(_._2.head)
+    val (recognizedJumps,another) = (jumps1 ++ jumps2).groupBy(_.addr).partition(_._2.size == 1)
+    val jumps = recognizedJumps.map(_._2.head)
+    val unrecognizedJumps = another.flatMap(_._2).toSet
 
-    val jumpsMap: Map[Int, AddressedJumpOp] = jumps.map {
-      case j @ JumpI(addr, _) => addr -> j
-      case j @ Jump(addr, _)  => addr -> j
-    }.toMap
+    val jumpsMap: Map[Int, AddressedJumpOp] = jumps.map(t => t.addr -> t).toMap
 
     val newOps = ops.code.map {
       case (ind, SelfAddressedJumpI(ind1)) if jumpsMap.contains(ind1) => ind -> jumpsMap(ind1)
       case (ind, SelfAddressedJump(ind1)) if jumpsMap.contains(ind1)  => ind -> jumpsMap(ind1)
       case a                                                          => a
     }
-
-//    val unrecognizedJumps: List[AddressedJumpOp] = newOps.collect{
-//      case (ind,j@SelfAddressedJumpI(ind1)) => j
-//      case (ind,j@SelfAddressedJump(ind1)) => j
-//    }
-
-    //if (jumpdests.isEmpty)
-      Right(newOps)
-    //else Left(jumpdests -> unrecognizedJumps.toSet)
+    unrecognizedJumps -> newOps
   }
 }

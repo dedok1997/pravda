@@ -20,19 +20,19 @@ object StackSizePredictorTests extends TestSuite {
         val Right((c, r)) = Blocks.splitToCreativeAndRuntime(ops)
 
         //TODO use product
-        val Right(opt1) = JumpTargetRecognizer(c).flatMap(a => JumpTargetRecognizer(r).map(b => (a, b)))
+        val opt1 = JumpTargetRecognizer(c) -> JumpTargetRecognizer(r)
 
         Predef.assert(
           opt1 match {
             case (newOps1, newOps2) =>
-              val res1 = StackSizePredictor.emulate(newOps1.map(_._2))
+              val res1 = StackSizePredictor.emulate(newOps1._2.map(_._2),newOps1._1)
               val f = res1.forall {
                 case (_, ind) if ind >= 0 => true
                 case (Stop, -1)           => true
                 case _                    => false
               }
 
-              val res2 = StackSizePredictor.emulate(newOps2.map(_._2))
+              val res2 = StackSizePredictor.emulate(newOps2._2.map(_._2),newOps2._1)
               val s = res2.forall {
                 case (_, ind) if ind >= 0 => true
                 case (Stop, -1)           => true

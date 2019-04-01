@@ -43,8 +43,7 @@ object SimpleTranslation {
     bigintOps(List(asmOp))
 
   private val translate: PartialFunction[EVM.Op, List[asm.Operation]] = {
-    case Push(bytes) => List(Operation.Push(evmWord(bytes.toArray)))
-
+    case Push(bytes) => List(Operation.Push(evmWord(bytes.reverse.toArray)))
     case Pop => codeToOps(Opcodes.POP)
 
     case Add => bigintOp(Operation(Opcodes.ADD)) //FIXME result % 2^256

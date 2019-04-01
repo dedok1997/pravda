@@ -131,7 +131,7 @@ object RunTests extends TestSuite {
 //      val externalProgram = PravdaAssembler.assemble(
 //        pop ~ stop, saveLabels = true)
       val addr1 = ByteString.copyFrom((1 to 20).map(_.toByte).toArray)
-      val addr2 = ByteString.copyFrom((2 to 21).map(_.toByte).toArray)
+      val addr2 = ByteString.copyFrom((2 to 21).map(_ => 0).map(_.toByte).toArray)
 
       val addr = Address @@ ByteString.copyFrom(( (1 to 20) ++ (21 to 32 map(_ => 0))).map(_.toByte).toArray)
 
@@ -182,31 +182,25 @@ object RunTests extends TestSuite {
         implicit val debugger = EvmDebugger
         implicit val showLog = EvmDebugger.debugLogShow(showStack = true, showHeap = false, showStorage = true)
         implicit val showLogs = EvmDebugger.showDebugLogContainer
-        try {
-          val Right(output) = EvmSandboxDebug.debugAddressedCode(preconditions, ops, abi)
-          println(output)
-        }catch {
-          case e: Exception =>
-        }
-
-        val asmOps = EvmDebugTranslator.debugTranslateActualContract(ops, abi)
-        val asmProgramE = asmOps.map(ops => PravdaAssembler.assemble(ops, saveLabels = true))
-
-         for {
-          asmProgram <- asmProgramE
-          asm = PravdaAssembler.disassemble(asmProgram)
-        } {
-           import pravda.vm.asm.Operation.mnemonicByOpcode
-           import pravda.vm.asm.Operation.Orphan
-                      asm.foreach{
-             case (q,Orphan(op)) => println(q + ":" + mnemonicByOpcode(op))
-             case op => println(op)
-           }
-         }
+        val Right(output) = EvmSandboxDebug.debugAddressedCode(preconditions, ops, abi)
+        println(output)
 
 
+//        val asmOps = EvmDebugTranslator.debugTranslateActualContract(ops, abi)
+//        val asmProgramE = asmOps.map(ops => PravdaAssembler.assemble(ops, saveLabels = true))
+//
+//         for {
+//          asmProgram <- asmProgramE
+//          asm = PravdaAssembler.disassemble(asmProgram)
+//        } {
+//           import pravda.vm.asm.Operation.mnemonicByOpcode
+//           import pravda.vm.asm.Operation.Orphan
+//                      asm.foreach{
+//             case (q,Orphan(op)) => println(q + ":" + mnemonicByOpcode(op))
+//             case op => println(op)
+//           }
+//         }
       }
-
     }
   }
 }

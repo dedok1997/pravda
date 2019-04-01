@@ -40,10 +40,10 @@ object StackSizePredictor {
       case (op, _)             => op
     }
 
-  def emulate(ops: List[Op]): List[(Op, Int)] = {
+  def emulate(ops: List[Op],unrecognizedJumps: Set[TargetedJumpOp]): List[(Op, Int)] = {
     val ops1 = ops.map(_ -> -1).toArray
     import OpCodes._
-    type ToJumpDest = Option[Int]
+    type ToJumpDest = Option[Seq[Int]]
     type StackSize = Int
     type ToContinue = Option[Int]
     var used = Set.empty[Int]
@@ -52,25 +52,37 @@ object StackSizePredictor {
       if (!used.contains(ind)) {
         used = used + ind
         ops1(ind) match {
+
+          case (j @ SelfAddressedJump(addr), s) =>
+            val jumps = unrecognizedJumps.filter(_.addr == addr).toSeq.map(_.dest)
+            ops1(ind) = (j, size)
+            if(jumps.isEmpty)
+              (None, None, handle(j, size))
+            else
+              (Some(jumps),None,handle(j, size))
+
+
+          case (j @ SelfAddressedJumpI(addr), s) =>
+            val jumps = unrecognizedJumps.filter(_.addr == addr).toSeq.map(_.dest)
+            ops1(ind) = (j, size)
+            if(jumps.isEmpty)
+              (None, Some(ind + 1), handle(j, size))
+            else
+              (Some(jumps), Some(ind + 1), handle(j, size))
+
+
+          case (j @ Jump(addr, dest), s) =>
+            ops1(ind) = (j, size)
+            (Some(Seq(dest)), None, handle(j, size))
+
+          case (j @ JumpI(addr, dest), s) =>
+            ops1(ind) = (j, size)
+            (Some(Seq(dest)), Some(ind + 1), handle(j, size))
+
           case (x, s) if terminate(x) =>
             ops1(ind) = (x, size)
             (None, None, handle(x, size))
 
-          case (j @ SelfAddressedJump(_), s) =>
-            ops1(ind) = (j, size)
-            (None, None, handle(j, size))
-
-          case (j @ SelfAddressedJumpI(_), s) =>
-            ops1(ind) = (j, size)
-            (None, Some(ind + 1), handle(j, size))
-
-          case (j @ Jump(addr, dest), s) =>
-            ops1(ind) = (j, size)
-            (Some(dest), None, handle(j, size))
-
-          case (j @ JumpI(addr, dest), s) =>
-            ops1(ind) = (j, size)
-            (Some(dest), Some(ind + 1), handle(j, size))
 
           case (x, s) =>
             ops1(ind) = (x, size)
@@ -84,11 +96,13 @@ object StackSizePredictor {
         case ind if ind >= 0 =>
           val (to, cont, s) = emulate(ind, size)
           to match {
-            case Some(addr) =>
-              emulateS(ops1.indexWhere {
-                case (JumpDest(`addr`), i) if i < 0 => true
-                case _                              => false
-              }, s)
+            case Some(addrs) =>
+              addrs.foreach { addr =>
+                emulateS(ops1.indexWhere {
+                  case (JumpDest(`addr`), i) if i < 0 => true
+                  case _ => false
+                }, s)
+              }
             case _ => ()
           }
 

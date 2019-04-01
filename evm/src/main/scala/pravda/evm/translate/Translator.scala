@@ -123,8 +123,8 @@ object Translator {
     for {
       code1 <- Blocks.splitToCreativeAndRuntime(ops)
       (creationCode1, actualContract1) = code1
-      code2 <- JumpTargetRecognizer(actualContract1).left.map(_.toString)
-      ops = StackSizePredictor.clear(StackSizePredictor.emulate(code2.map(_._2)))
+      (jumps,code2) =  JumpTargetRecognizer(actualContract1)
+      ops = StackSizePredictor.clear(StackSizePredictor.emulate(code2.map(_._2),jumps))
       filtered = filterCode(ops)
 
       jumpDests = filtered.collect{case j@JumpDest(addr) => j}.zipWithIndex
@@ -185,7 +185,7 @@ object Translator {
         Operation.Push(Data.Primitive.Utf8(f.name)),
         Operation(Opcodes.EQ),
         Operation(Opcodes.NOT),
-        Operation.JumpI(Some(s"convert_result_not_${f.name}"))
+          Operation.JumpI(Some(s"convert_result_not_${f.name}"))
       ) ++ List(Operation(Opcodes.POP)) ++
         f.outputs.headOption.map(h => castResult(h)).toList.flatten ++
         List(Operation(Opcodes.STOP), Operation.Label(s"convert_result_not_${f.name}"))

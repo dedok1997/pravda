@@ -8,7 +8,8 @@ object SymbolicExecutor {
 
   def evalOp(op: Op, state: StackWithNegativeSize[BigInt]): StackWithNegativeSize[BigInt] = {
     op match {
-      case Push(n)                   => state push BigInt(1, n.toArray)
+      case Push(n)                   =>
+        state push BigInt(1, n.toArray)
       case Swap(n) => state swap n
       case Dup(n)  => state dup n
       case And if state.pop()._1.get >= 0 && state.pop()._2.pop()._1.get >= 0    =>
@@ -25,7 +26,7 @@ object SymbolicExecutor {
     }
   }
 
-  def eval(ops: Vector[Op]): Set[AddressedJumpOp] = {
+  def eval(ops: Vector[Op]): Set[TargetedJumpOp] = {
     val jumpdest = ops.zipWithIndex.collect { case t @ (JumpDest(addr), ind) => addr -> ind }.toMap
 
     var used = Set.empty[(Int,Int)]
@@ -71,7 +72,7 @@ object SymbolicExecutor {
 
   def eval(main: List[List[Op]],
            withJumpDest: Map[Int, WithJumpDest],
-           withJumpI: Map[Int, WithJumpI]): (Set[AddressedJumpOp], Set[WithJumpDest]) = {
+           withJumpI: Map[Int, WithJumpI]): Set[TargetedJumpOp] = {
 
     def eval(stack: StackWithNegativeSize[BigInt])(block: List[Op],
                                                    withJumpDest: Map[Int, WithJumpDest],
@@ -150,15 +151,11 @@ object SymbolicExecutor {
           (s1 ++ s3) -> (s2 ++ s4)
       }
 
-    val x: Set[AddressedJumpOp] = r2._1 ++ r2._2
-    val y = r2._1.map(_.addr) ++ r2._2.map(_.addr)
-    val z = r2._1.map(_.dest) ++ r2._2.map(_.dest)
-    val yy = x.groupBy(_.addr).filter(_._2.size > 1)
-    y -> z -> yy
-    x -> Set.empty
+    val x: Set[TargetedJumpOp] = r2._1 ++ r2._2
+    x
   }
 
-  def jumps(blocks: List[List[Op]]): (Set[AddressedJumpOp], Set[WithJumpDest]) = {
+  def jumps(blocks: List[List[Op]]): Set[TargetedJumpOp] = {
     val jumpable = Blocks.jumpable(blocks)
     val main = jumpable.withoutJumpdest.filter {
       case SelfAddressedJumpI(_) :: _ => false
